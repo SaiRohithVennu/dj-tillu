@@ -13,6 +13,7 @@ import { AIDJPanel } from './components/AIDJPanel';
 import { GeminiMoodDisplay } from './components/GeminiMoodDisplay';
 import { MoodPlaylistManager } from './components/MoodPlaylistManager';
 import { SupabaseTrackManager } from './components/SupabaseTrackManager';
+import { WhooshMoodBrowser } from './components/WhooshMoodBrowser';
 import { useAudioPlayer } from './hooks/useAudioPlayer';
 import { useGeminiMoodAnalysis } from './hooks/useGeminiMoodAnalysis';
 import { useAIMoodDJ } from './hooks/useAIMoodDJ';
@@ -347,6 +348,15 @@ function App() {
                   onAddToLibrary={handleAddToLibrary}
                   currentMood={mood}
                 />
+                
+                <div className="mt-6">
+                  <h3 className="text-lg font-semibold text-white mb-4">WhooshMusic Moods</h3>
+                  <WhooshMoodBrowser
+                    onTrackSelect={loadTrack}
+                    onAddToLibrary={handleAddToLibrary}
+                    currentMood={mood}
+                  />
+                </div>
                 
                 <div className="mt-6">
                   <h3 className="text-lg font-semibold text-white mb-4">Upload Music</h3>
