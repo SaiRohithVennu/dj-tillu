@@ -1,6 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
 import { GeminiVisionAnalyzer } from '../utils/geminiVision';
-import weave from '@wandb/weave';
 
 interface MoodAnalysisState {
   mood: string;
@@ -126,10 +125,7 @@ export const useGeminiMoodAnalysis = (
     setState(prev => ({ ...prev, isAnalyzing: true, error: null }));
     
     try {
-      // Track with Weave for hackathon
-      const analysis = await weave.trace('gemini_mood_analysis', async () => {
-        return await analyzerRef.current!.analyzeEmotion(videoElement);
-      });
+      const analysis = await analyzerRef.current.analyzeEmotion(videoElement);
       const mappedMood = analyzerRef.current.mapEmotionToMood(analysis.dominantEmotion);
       
       lastAnalysisTimeRef.current = Date.now();
