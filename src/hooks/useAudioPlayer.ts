@@ -58,7 +58,6 @@ export const useAudioPlayer = () => {
       setError(null);
       setCurrentTrack(track);
       setCurrentTime(0);
-      setIsPlaying(false);
       setDuration(track.duration);
       
       console.log('🎵 Loading track:', track.title, 'Audio URL:', track.audioUrl);
@@ -101,6 +100,14 @@ export const useAudioPlayer = () => {
 
   const play = async () => {
     if (!currentTrack) return;
+
+    // Stop any currently playing HTML audio to prevent conflicts
+    const htmlAudio = (window as any).currentAudio;
+    if (htmlAudio) {
+      htmlAudio.pause();
+      htmlAudio.currentTime = 0;
+      (window as any).currentAudio = null;
+    }
 
     console.log('🎵 Play function called for:', currentTrack.title);
     
