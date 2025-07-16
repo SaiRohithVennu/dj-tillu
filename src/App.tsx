@@ -206,7 +206,7 @@ function App() {
 
         {/* Right Panel - Crowd Analytics */}
         <DraggablePanel
-          title="Gemini Vision Analytics"
+          title="Apple Vision"
           initialPosition={{ x: window.innerWidth - 340, y: 100 }}
           initialSize={{ width: 320, height: 280 }}
           className="z-40"
