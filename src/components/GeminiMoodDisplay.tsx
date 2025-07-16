@@ -162,7 +162,7 @@ export const GeminiMoodDisplay: React.FC<GeminiMoodDisplayProps> = ({
               <div className="w-2 h-2 bg-purple-400 rounded-full animate-bounce"></div>
               <div className="w-2 h-2 bg-purple-400 rounded-full animate-bounce" style={{ animationDelay: '0.1s' }}></div>
               <div className="w-2 h-2 bg-purple-400 rounded-full animate-bounce" style={{ animationDelay: '0.2s' }}></div>
-              <span className="text-purple-300 text-xs ml-2">Analyzing with Gemini...</span>
+              <span className="text-purple-300 text-xs ml-2">Analyzing with Apple...</span>
             </div>
           )}
         </div>
@@ -171,7 +171,7 @@ export const GeminiMoodDisplay: React.FC<GeminiMoodDisplayProps> = ({
       {/* Info */}
       <div className={`bg-purple-600/10 rounded-lg p-2 border border-purple-500/20 ${!enabled ? 'opacity-50' : ''}`}>
         <p className="text-xs text-gray-300 text-center">
-          <strong>Powered by Gemini Vision</strong><br />
+          <strong>Powered by Apple Vision</strong><br />
           {enabled ? 'Real-time emotion detection every 30 seconds' : 'Analysis disabled - click ON to enable'}
         </p>
       </div>
