@@ -162,7 +162,7 @@ export const GeminiMoodDisplay: React.FC<GeminiMoodDisplayProps> = ({
               <div className="w-2 h-2 bg-purple-400 rounded-full animate-bounce"></div>
               <div className="w-2 h-2 bg-purple-400 rounded-full animate-bounce" style={{ animationDelay: '0.1s' }}></div>
               <div className="w-2 h-2 bg-purple-400 rounded-full animate-bounce" style={{ animationDelay: '0.2s' }}></div>
-              <span className="text-purple-300 text-xs ml-2">Analyzing with Apple...</span>
+              <span className="text-purple-300 text-xs ml-2">Analyzing with AI...</span>
             </div>
           )}
         </div>
