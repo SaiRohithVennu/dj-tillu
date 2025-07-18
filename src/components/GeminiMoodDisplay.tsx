@@ -171,7 +171,7 @@ export const GeminiMoodDisplay: React.FC<GeminiMoodDisplayProps> = ({
       {/* Info */}
       <div className={`bg-purple-600/10 rounded-lg p-2 border border-purple-500/20 ${!enabled ? 'opacity-50' : ''}`}>
         <p className="text-xs text-gray-300 text-center">
-          <strong>Powered by Apple Vision</strong><br />
+          <strong>Powered by AI Vision</strong><br />
           {enabled ? 'Real-time emotion detection every 30 seconds' : 'Analysis disabled - click ON to enable'}
         </p>
       </div>
