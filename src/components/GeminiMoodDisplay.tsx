@@ -65,7 +65,7 @@ export const GeminiMoodDisplay: React.FC<GeminiMoodDisplayProps> = ({
       <div className="flex items-center justify-between">
         <div className="flex items-center space-x-2">
           <Brain className="w-5 h-5 text-purple-400" />
-          <span className="text-white font-medium">Apple Vision</span>
+          <span className="text-white font-medium">AI Vision</span>
           {enabled && isAnalyzing && (
             <div className="w-2 h-2 bg-purple-400 rounded-full animate-pulse"></div>
           )}
