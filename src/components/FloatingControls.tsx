@@ -19,7 +19,7 @@ export const FloatingControls: React.FC<FloatingControlsProps> = ({
   onSettingsToggle,
   isSilenced = false,
   onStartSession,
-  hasStarted
+  hasStarted,
   onToggleSilence,
   onForceSilence,
   onShowEventSetup
