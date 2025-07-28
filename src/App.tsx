@@ -285,6 +285,10 @@ function App() {
             triggeredMoments={triggeredMoments}
             onStartEvent={startEvent}
             onStopEvent={stopEvent}
+            isSilenced={isSilenced}
+            onToggleSilence={toggleSilence}
+            onForceSilence={forceSilence}
+            onShowEventSetup={() => setShowEventWizard(true)}
           />
         </DraggablePanel>
 
@@ -371,8 +375,12 @@ function App() {
           onPlayToggle={togglePlay}
           onSettingsToggle={() => setShowSettings(!showSettings)}
           isSilenced={isSilenced}
+          isSilenced={isSilenced}
           onStartSession={handleStartSession}
           hasStarted={hasSessionStarted}
+          onToggleSilence={toggleSilence}
+          onForceSilence={forceSilence}
+          onShowEventSetup={() => setShowEventWizard(true)}
           onToggleSilence={toggleSilence}
           onForceSilence={forceSilence}
           onShowEventSetup={() => setShowEventWizard(true)}
