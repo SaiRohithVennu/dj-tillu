@@ -14,9 +14,13 @@ import { GeminiMoodDisplay } from './components/GeminiMoodDisplay';
 import { MoodPlaylistManager } from './components/MoodPlaylistManager';
 import { SupabaseTrackManager } from './components/SupabaseTrackManager';
 import { WhooshMoodBrowser } from './components/WhooshMoodBrowser';
+import { EventDetailsManager } from './components/EventDetailsManager';
+import { FaceRecognitionSystem } from './components/FaceRecognitionSystem';
+import { SmartEventDashboard } from './components/SmartEventDashboard';
 import { useAudioPlayer } from './hooks/useAudioPlayer';
 import { useGeminiMoodAnalysis } from './hooks/useGeminiMoodAnalysis';
 import { useAIMoodDJ } from './hooks/useAIMoodDJ';
+import { useSmartEventDJ } from './hooks/useSmartEventDJ';
 import { Track } from './data/tracks';
 import { useTrackLibrary } from './hooks/useTrackLibrary';
 
@@ -34,6 +38,7 @@ function App() {
   const [showOverlays, setShowOverlays] = useState(true);
   const [videoElement, setVideoElement] = useState<HTMLVideoElement | null>(null);
   const [hasSessionStarted, setHasSessionStarted] = useState(false);
+  const [showEventSetup, setShowEventSetup] = useState(false);
   
   const {
     isPlaying,
@@ -92,6 +97,30 @@ function App() {
     timeToNextCheck,
     lastMood
   } = useAIMoodDJ({
+    tracks: trackLibrary,
+    currentMood: mood,
+    energy,
+    crowdSize,
+    onTrackChange: loadTrack,
+    onAnnouncement: triggerAnnouncement,
+    isPlaying,
+    currentTrack
+  });
+
+  const {
+    eventDetails,
+    isActive: isEventActive,
+    eventStarted,
+    currentPhase,
+    recognizedVIPs,
+    initializeEvent,
+    startEvent,
+    stopEvent,
+    handleVIPRecognized,
+    getEventStatus,
+    getUpcomingMoments,
+    triggeredMoments
+  } = useSmartEventDJ({
     tracks: trackLibrary,
     currentMood: mood,
     energy,
@@ -228,15 +257,39 @@ function App() {
 
         {/* AI Assistant - Right side under Crowd Analytics */}
         <DraggablePanel
-          title="Mood Playlists"
+          title="Smart Event DJ"
           initialPosition={{ x: window.innerWidth - 340, y: 400 }}
           initialSize={{ width: 320, height: 280 }}
           className="z-40"
           accentColor="yellow"
         >
-          <MoodPlaylistManager
-            tracks={trackLibrary}
-            onPlayTrack={loadTrack}
+          <SmartEventDashboard
+            eventDetails={eventDetails}
+            isActive={isEventActive}
+            eventStarted={eventStarted}
+            currentPhase={currentPhase}
+            recognizedVIPs={recognizedVIPs}
+            eventStatus={getEventStatus()}
+            upcomingMoments={getUpcomingMoments()}
+            triggeredMoments={triggeredMoments}
+            onStartEvent={startEvent}
+            onStopEvent={stopEvent}
+          />
+        </DraggablePanel>
+
+        {/* Face Recognition - Left side under Track Library */}
+        <DraggablePanel
+          title="Face Recognition"
+          initialPosition={{ x: 20, y: 520 }}
+          initialSize={{ width: 320, height: 280 }}
+          className="z-40"
+          accentColor="blue"
+        >
+          <FaceRecognitionSystem
+            videoElement={videoElement}
+            vipGuests={eventDetails?.vipGuests || []}
+            onVIPRecognized={handleVIPRecognized}
+            enabled={isEventActive}
           />
         </DraggablePanel>
 
@@ -325,8 +378,21 @@ function App() {
             
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6 h-full">
               <div>
-                <h3 className="text-lg font-semibold text-white mb-4">Audio Settings</h3>
+                <h3 className="text-lg font-semibold text-white mb-4">Event Setup</h3>
                 <div className="space-y-4">
+                  <button
+                    onClick={() => setShowEventSetup(!showEventSetup)}
+                    className="w-full px-4 py-2 bg-purple-600 hover:bg-purple-700 rounded-lg transition-colors"
+                  >
+                    {showEventSetup ? 'Hide Event Setup' : 'Configure Smart Event'}
+                  </button>
+                  
+                  {showEventSetup && (
+                    <div className="max-h-96 overflow-y-auto">
+                      <EventDetailsManager onEventSaved={initializeEvent} />
+                    </div>
+                  )}
+                  
                   <div>
                     <label className="block text-sm text-gray-300 mb-2">Master Volume</label>
                     <input
@@ -343,6 +409,15 @@ function App() {
               
               <div>
                 <h3 className="text-lg font-semibold text-white mb-4">Music Browser</h3>
+                
+                <div className="mb-6">
+                  <h4 className="text-md font-semibold text-white mb-4">Mood Playlists</h4>
+                  <MoodPlaylistManager
+                    tracks={trackLibrary}
+                    onPlayTrack={loadTrack}
+                  />
+                </div>
+                
                 <AudiusBrowser 
                   onTrackSelect={loadTrack}
                   onAddToLibrary={handleAddToLibrary}
@@ -372,21 +447,26 @@ function App() {
 
 
         {/* AI Status Indicator */}
-        {isAIActive && (
+        {(isAIActive || isEventActive) && (
           <div className="absolute top-1/2 left-8 transform -translate-y-1/2 z-50">
             <div className={`px-4 py-2 rounded-full backdrop-blur-xl shadow-2xl border transition-all ${
               isTransitioning 
-                ? 'bg-yellow-500/30 border-yellow-500/50' 
+                ? 'bg-yellow-500/30 border-yellow-500/50'
+                : isEventActive
+                ? 'bg-purple-500/30 border-purple-500/50'
                 : 'bg-green-500/30 border-green-500/50'
             }`}>
               <div className="flex items-center space-x-2">
                 <div className={`w-2 h-2 rounded-full animate-pulse ${
-                  isTransitioning ? 'bg-yellow-400' : 'bg-green-400'
+                  isTransitioning ? 'bg-yellow-400' : 
+                  isEventActive ? 'bg-purple-400' : 'bg-green-400'
                 }`}></div>
                 <span className={`font-semibold text-sm ${
-                  isTransitioning ? 'text-yellow-300' : 'text-green-300'
+                  isTransitioning ? 'text-yellow-300' : 
+                  isEventActive ? 'text-purple-300' : 'text-green-300'
                 }`}>
-                  {isTransitioning ? 'TRANSITIONING' : 'AI DJ ACTIVE'}
+                  {isTransitioning ? 'TRANSITIONING' : 
+                   isEventActive ? 'SMART EVENT ACTIVE' : 'AI DJ ACTIVE'}
                 </span>
                 {isTransitioning && (
                   <span className="text-yellow-200 text-xs">
