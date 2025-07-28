@@ -1,5 +1,5 @@
 import React from 'react';
-import { Calendar, Clock, Users, Zap, CheckCircle, AlertCircle } from 'lucide-react';
+import { Calendar, Clock, Users, Zap, CheckCircle, AlertCircle, VolumeX, Volume2 } from 'lucide-react';
 
 interface SmartEventDashboardProps {
   eventDetails: any;
@@ -12,6 +12,10 @@ interface SmartEventDashboardProps {
   triggeredMoments: string[];
   onStartEvent: () => void;
   onStopEvent: () => void;
+  isSilenced?: boolean;
+  onToggleSilence?: () => void;
+  onForceSilence?: (duration?: number) => void;
+  onShowEventSetup?: () => void;
 }
 
 export const SmartEventDashboard: React.FC<SmartEventDashboardProps> = ({
@@ -24,7 +28,11 @@ export const SmartEventDashboard: React.FC<SmartEventDashboardProps> = ({
   upcomingMoments,
   triggeredMoments,
   onStartEvent,
-  onStopEvent
+  onStopEvent,
+  isSilenced = false,
+  onToggleSilence,
+  onForceSilence,
+  onShowEventSetup
 }) => {
   if (!eventDetails) {
     return (
@@ -32,6 +40,14 @@ export const SmartEventDashboard: React.FC<SmartEventDashboardProps> = ({
         <Calendar className="w-12 h-12 text-gray-500 mx-auto mb-3" />
         <p className="text-gray-300 mb-2">No event configured</p>
         <p className="text-gray-400 text-sm">Set up your event in the Event Setup panel</p>
+        {onShowEventSetup && (
+          <button
+            onClick={onShowEventSetup}
+            className="mt-4 px-4 py-2 bg-purple-600 hover:bg-purple-700 rounded-lg transition-colors"
+          >
+            Configure Event
+          </button>
+        )}
       </div>
     );
   }
@@ -92,20 +108,50 @@ export const SmartEventDashboard: React.FC<SmartEventDashboardProps> = ({
         
         <div className="flex space-x-2">
           {!eventStarted ? (
+            <>
+              {onShowEventSetup && (
+                <button
+                  onClick={onShowEventSetup}
+                  className="px-3 py-2 bg-gray-600 hover:bg-gray-700 rounded-lg transition-colors flex items-center text-sm"
+                >
+                  <Calendar className="w-4 h-4 mr-1" />
+                  Edit
+                </button>
+              )}
             <button
               onClick={onStartEvent}
-              className="flex-1 px-3 py-2 bg-green-600 hover:bg-green-700 rounded-lg transition-colors flex items-center justify-center"
+              className="px-3 py-2 bg-green-600 hover:bg-green-700 rounded-lg transition-colors flex items-center justify-center"
             >
               <Zap className="w-4 h-4 mr-2" />
               Start Event
             </button>
+            </>
           ) : (
+            <>
+              {onToggleSilence && (
+                <button
+                  onClick={onToggleSilence}
+                  className={`px-3 py-2 rounded-lg transition-colors flex items-center ${
+                    isSilenced 
+                      ? 'bg-red-600 hover:bg-red-700' 
+                      : 'bg-gray-600 hover:bg-gray-700'
+                  }`}
+                  title={isSilenced ? 'Enable announcements' : 'Silence announcements'}
+                >
+                  {isSilenced ? (
+                    <VolumeX className="w-4 h-4" />
+                  ) : (
+                    <Volume2 className="w-4 h-4" />
+                  )}
+                </button>
+              )}
             <button
               onClick={onStopEvent}
-              className="flex-1 px-3 py-2 bg-red-600 hover:bg-red-700 rounded-lg transition-colors"
+              className="px-3 py-2 bg-red-600 hover:bg-red-700 rounded-lg transition-colors"
             >
               Stop Event
             </button>
+            </>
           )}
         </div>
       </div>
@@ -138,6 +184,16 @@ export const SmartEventDashboard: React.FC<SmartEventDashboardProps> = ({
                 {currentPhase.energyTarget}/10
               </span>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Silence Status */}
+      {isSilenced && (
+        <div className="bg-red-600/20 rounded-lg p-3 border border-red-500/30">
+          <div className="flex items-center space-x-2">
+            <VolumeX className="w-4 h-4 text-red-400" />
+            <span className="text-red-300 font-medium text-sm">Announcements Silenced</span>
           </div>
         </div>
       )}

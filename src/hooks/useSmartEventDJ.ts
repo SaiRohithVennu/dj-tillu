@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { Track } from '../data/tracks';
+import { djLogger } from '../utils/wandbLogger';
 
 interface EventDetails {
   id: string;
@@ -8,11 +9,15 @@ interface EventDetails {
   startTime: string;
   endTime: string;
   expectedAttendees: number;
+  date: string;
   venue: string;
+  description: string;
+  musicEnabled: boolean;
+  musicPreferences: string[];
   specialMoments: SpecialMoment[];
   vipGuests: VIPGuest[];
-  musicPreferences: string[];
   eventFlow: EventFlowItem[];
+  aiVoiceSettings: AIVoiceSettings;
 }
 
 interface SpecialMoment {
@@ -29,10 +34,19 @@ interface VIPGuest {
   id: string;
   name: string;
   role: string;
+  description: string;
   faceImageUrl?: string;
   personalizedGreeting?: string;
   recognitionCount: number;
   lastSeen?: Date;
+}
+
+interface AIVoiceSettings {
+  voiceType: 'professional' | 'friendly' | 'energetic' | 'elegant' | 'casual';
+  speed: number;
+  pitch: number;
+  volume: number;
+  announcementStyle: 'formal' | 'casual' | 'party' | 'wedding' | 'corporate';
 }
 
 interface EventFlowItem {
@@ -42,6 +56,7 @@ interface EventFlowItem {
   energyTarget: number;
   musicStyle: string;
   duration: number;
+  description: string;
   active?: boolean;
 }
 
@@ -73,6 +88,8 @@ export const useSmartEventDJ = ({
   const [recognizedVIPs, setRecognizedVIPs] = useState<VIPGuest[]>([]);
   const [eventStarted, setEventStarted] = useState(false);
   const intervalRef = useRef<NodeJS.Timeout>();
+  const [isSilenced, setIsSilenced] = useState(false);
+  const [lastAnnouncementTime, setLastAnnouncementTime] = useState<number>(0);
 
   // Initialize event
   const initializeEvent = (event: EventDetails) => {
@@ -81,6 +98,14 @@ export const useSmartEventDJ = ({
     setTriggeredMoments(new Set());
     setRecognizedVIPs(event.vipGuests.map(vip => ({ ...vip, recognitionCount: 0 })));
     console.log('🎪 Smart Event DJ initialized:', event.name);
+    
+    // Log event initialization to wandb
+    djLogger.logUserInteraction('event_initialized', {
+      eventName: event.name,
+      eventType: event.type,
+      vipCount: event.vipGuests.length,
+      phasesCount: event.eventFlow.length
+    });
   };
 
   // Start event
@@ -90,10 +115,19 @@ export const useSmartEventDJ = ({
     setEventStarted(true);
     setIsActive(true);
     
-    const welcomeMessage = generateWelcomeAnnouncement();
-    onAnnouncement(welcomeMessage);
+    // Only announce if music is enabled and not silenced
+    if (eventDetails.musicEnabled && !isSilenced) {
+      const welcomeMessage = generateWelcomeAnnouncement();
+      makeAnnouncement(welcomeMessage);
+    }
     
     console.log('🎉 Event started:', eventDetails.name);
+    
+    // Log event start to wandb
+    djLogger.logUserInteraction('event_started', {
+      eventName: eventDetails.name,
+      musicEnabled: eventDetails.musicEnabled
+    });
   };
 
   // Generate context-aware announcements
@@ -130,6 +164,26 @@ export const useSmartEventDJ = ({
            `Please welcome our special guest, ${vip.name}!`;
   };
 
+  // Smart announcement system with silence detection
+  const makeAnnouncement = (message: string) => {
+    if (isSilenced) {
+      console.log('🔇 Announcement silenced:', message);
+      return;
+    }
+
+    const now = Date.now();
+    const timeSinceLastAnnouncement = now - lastAnnouncementTime;
+    
+    // Prevent announcement spam (minimum 5 seconds between announcements)
+    if (timeSinceLastAnnouncement < 5000) {
+      console.log('⏰ Announcement throttled:', message);
+      return;
+    }
+
+    setLastAnnouncementTime(now);
+    onAnnouncement(message);
+  };
+
   const generateMomentAnnouncement = (moment: SpecialMoment): string => {
     if (moment.announcementTemplate) {
       return moment.announcementTemplate;
@@ -158,7 +212,7 @@ export const useSmartEventDJ = ({
     
     // Only announce if this is a new recognition (first time or after a long gap)
     const shouldAnnounce = vip.recognitionCount === 1 || 
-                          (vip.lastSeen && Date.now() - vip.lastSeen.getTime() > 300000); // 5 minutes
+                          (vip.lastSeen && Date.now() - vip.lastSeen.getTime() > 600000); // 10 minutes
     
     if (shouldAnnounce) {
       const announcement = generateVIPAnnouncement(vip);
@@ -167,7 +221,21 @@ export const useSmartEventDJ = ({
       }, 2000); // Delay to avoid interrupting current music
       
       console.log(`🌟 VIP announced: ${vip.name}`);
+      
+      // Log VIP recognition to wandb
+      djLogger.logUserInteraction('vip_recognized', {
+        vipName: vip.name,
+        vipRole: vip.role,
+        recognitionCount: vip.recognitionCount
+      });
     }
+  };
+
+  // Enhanced silence detection
+  const detectSilence = () => {
+    // This would integrate with audio analysis to detect when someone is speaking
+    // For now, we'll use a simple timer-based approach
+    return false; // Placeholder
   };
 
   // Check for scheduled moments
@@ -184,7 +252,7 @@ export const useSmartEventDJ = ({
         
         // Play announcement
         const announcement = generateMomentAnnouncement(moment);
-        onAnnouncement(announcement);
+        makeAnnouncement(announcement);
         
         // Change music if specified
         if (moment.musicCue) {
@@ -201,6 +269,13 @@ export const useSmartEventDJ = ({
         }
         
         console.log(`⏰ Special moment triggered: ${moment.description}`);
+        
+        // Log special moment to wandb
+        djLogger.logUserInteraction('special_moment_triggered', {
+          momentType: moment.type,
+          momentDescription: moment.description,
+          time: moment.time
+        });
       }
     });
   };
@@ -230,6 +305,13 @@ export const useSmartEventDJ = ({
       }
       
       console.log(`📅 Phase changed to: ${activePhase.phase} (${activePhase.musicStyle})`);
+      
+      // Log phase change to wandb
+      djLogger.logUserInteraction('phase_changed', {
+        phase: activePhase.phase,
+        musicStyle: activePhase.musicStyle,
+        energyTarget: activePhase.energyTarget
+      });
     }
   };
 
@@ -291,6 +373,13 @@ export const useSmartEventDJ = ({
     setIsActive(false);
     setEventStarted(false);
     setCurrentPhase(null);
+    
+    // Log event stop to wandb
+    djLogger.logUserInteraction('event_stopped', {
+      eventName: eventDetails?.name || 'Unknown',
+      duration: eventDetails ? Date.now() - new Date(`${eventDetails.date}T${eventDetails.startTime}`).getTime() : 0
+    });
+    
     console.log('🛑 Event stopped');
   };
 
@@ -313,6 +402,17 @@ export const useSmartEventDJ = ({
       .slice(0, 3);
   };
 
+  // Silence control functions
+  const toggleSilence = () => {
+    setIsSilenced(!isSilenced);
+    console.log(`🔇 AI announcements ${!isSilenced ? 'silenced' : 'enabled'}`);
+  };
+
+  const forceSilence = (duration: number = 30000) => {
+    setIsSilenced(true);
+    setTimeout(() => setIsSilenced(false), duration);
+  };
+
   return {
     eventDetails,
     isActive,
@@ -325,6 +425,10 @@ export const useSmartEventDJ = ({
     handleVIPRecognized,
     getEventStatus,
     getUpcomingMoments,
-    triggeredMoments: Array.from(triggeredMoments)
+    triggeredMoments: Array.from(triggeredMoments),
+    isSilenced,
+    toggleSilence,
+    forceSilence,
+    makeAnnouncement
   };
 };
