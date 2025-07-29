@@ -1,28 +1,20 @@
 import React from 'react';
-import { Play, Pause, Settings, VolumeX, Volume2, Calendar } from 'lucide-react';
+import { Play, Pause, Settings } from 'lucide-react';
 
 interface FloatingControlsProps {
   isPlaying: boolean;
   onPlayToggle: () => void;
   onSettingsToggle: () => void;
-  isSilenced?: boolean;
   onStartSession: () => void;
   hasStarted: boolean;
-  onToggleSilence?: () => void;
-  onForceSilence?: (duration?: number) => void;
-  onShowEventSetup?: () => void;
 }
 
 export const FloatingControls: React.FC<FloatingControlsProps> = ({
   isPlaying,
   onPlayToggle,
   onSettingsToggle,
-  isSilenced = false,
   onStartSession,
-  hasStarted,
-  onToggleSilence,
-  onForceSilence,
-  onShowEventSetup
+  hasStarted
 }) => {
   const handleMainPlayClick = () => {
     if (!hasStarted) {
@@ -59,43 +51,6 @@ export const FloatingControls: React.FC<FloatingControlsProps> = ({
         </button>
         
       </div>
-
-      {/* Event Setup Button - Top Left */}
-      {onShowEventSetup && (
-        <div className="absolute top-6 left-20 z-50">
-          <button
-            onClick={onShowEventSetup}
-            className="w-12 h-12 bg-black/30 backdrop-blur-md rounded-full flex items-center justify-center text-white hover:bg-black/50 transition-colors border border-white/20"
-            title="Event Setup"
-          >
-            <Calendar className="w-5 h-5" />
-          </button>
-        </div>
-      )}
-
-      {/* Silence Control - Bottom Left */}
-      {onToggleSilence && (
-        <div className="absolute bottom-12 left-8 z-50">
-          <button
-            onClick={onToggleSilence}
-            className={`w-12 h-12 backdrop-blur-md rounded-full flex items-center justify-center text-white hover:bg-black/50 transition-colors border border-white/20 ${
-              isSilenced ? 'bg-red-500/30' : 'bg-black/30'
-            }`}
-            title={isSilenced ? 'Enable announcements' : 'Silence announcements'}
-          >
-            {isSilenced ? (
-              <VolumeX className="w-5 h-5" />
-            ) : (
-              <Volume2 className="w-5 h-5" />
-            )}
-          </button>
-          {onForceSilence && (
-            <div className="absolute -top-12 left-0 text-xs text-white bg-black/50 px-2 py-1 rounded opacity-0 hover:opacity-100 transition-opacity">
-              Hold to silence for 30s
-            </div>
-          )}
-        </div>
-      )}
 
       {/* Settings Button - Top Right */}
       <div className="absolute top-6 right-6 z-50">

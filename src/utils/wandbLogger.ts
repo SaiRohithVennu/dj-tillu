@@ -1,4 +1,4 @@
-import * as wandb from '@wandb/sdk';
+import wandb from 'wandb';
 
 interface DJMetrics {
   mood: string;

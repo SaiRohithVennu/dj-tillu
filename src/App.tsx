@@ -1,6 +1,5 @@
 import React, { useState, useEffect } from 'react';
 import { DraggablePanel } from './components/DraggablePanel';
-import { EventSetupWizard } from './components/EventSetupWizard';
 import { TrackList } from './components/TrackList';
 import { NowPlaying } from './components/NowPlaying';
 import { AudiusBrowser } from './components/AudiusBrowser';
@@ -15,6 +14,7 @@ import { GeminiMoodDisplay } from './components/GeminiMoodDisplay';
 import { MoodPlaylistManager } from './components/MoodPlaylistManager';
 import { SupabaseTrackManager } from './components/SupabaseTrackManager';
 import { WhooshMoodBrowser } from './components/WhooshMoodBrowser';
+import { EventDetailsManager } from './components/EventDetailsManager';
 import { FaceRecognitionSystem } from './components/FaceRecognitionSystem';
 import { SmartEventDashboard } from './components/SmartEventDashboard';
 import { useAudioPlayer } from './hooks/useAudioPlayer';
@@ -38,7 +38,7 @@ function App() {
   const [showOverlays, setShowOverlays] = useState(true);
   const [videoElement, setVideoElement] = useState<HTMLVideoElement | null>(null);
   const [hasSessionStarted, setHasSessionStarted] = useState(false);
-  const [showEventWizard, setShowEventWizard] = useState(false);
+  const [showEventSetup, setShowEventSetup] = useState(false);
   
   const {
     isPlaying,
@@ -119,11 +119,7 @@ function App() {
     handleVIPRecognized,
     getEventStatus,
     getUpcomingMoments,
-    triggeredMoments,
-    isSilenced,
-    toggleSilence,
-    forceSilence,
-    makeAnnouncement
+    triggeredMoments
   } = useSmartEventDJ({
     tracks: trackLibrary,
     currentMood: mood,
@@ -134,12 +130,6 @@ function App() {
     isPlaying,
     currentTrack
   });
-
-  const handleEventConfigured = (eventDetails: any) => {
-    initializeEvent(eventDetails);
-    setShowEventWizard(false);
-    console.log('✅ Event configured and ready!');
-  };
 
   const handleAddToLibrary = (track: Track) => {
     addToLibrary(track);
@@ -196,8 +186,7 @@ function App() {
   }, []);
 
   return (
-    <>
-      <div className="h-screen w-screen overflow-hidden relative bg-black">
+    <div className="h-screen w-screen overflow-hidden relative bg-black">
       {/* Fullscreen Video Background */}
       <div className="absolute inset-0 z-0">
         <FullscreenVideoBackground onVideoReady={setVideoElement} />
@@ -285,10 +274,6 @@ function App() {
             triggeredMoments={triggeredMoments}
             onStartEvent={startEvent}
             onStopEvent={stopEvent}
-            isSilenced={isSilenced}
-            onToggleSilence={toggleSilence}
-            onForceSilence={forceSilence}
-            onShowEventSetup={() => setShowEventWizard(true)}
           />
         </DraggablePanel>
 
@@ -374,16 +359,8 @@ function App() {
           isPlaying={isPlaying}
           onPlayToggle={togglePlay}
           onSettingsToggle={() => setShowSettings(!showSettings)}
-          isSilenced={isSilenced}
-          isSilenced={isSilenced}
           onStartSession={handleStartSession}
           hasStarted={hasSessionStarted}
-          onToggleSilence={toggleSilence}
-          onForceSilence={forceSilence}
-          onShowEventSetup={() => setShowEventWizard(true)}
-          onToggleSilence={toggleSilence}
-          onForceSilence={forceSilence}
-          onShowEventSetup={() => setShowEventWizard(true)}
         />
 
         {/* Settings Panel (when open) */}
@@ -404,11 +381,17 @@ function App() {
                 <h3 className="text-lg font-semibold text-white mb-4">Event Setup</h3>
                 <div className="space-y-4">
                   <button
-                    onClick={() => setShowEventWizard(true)}
+                    onClick={() => setShowEventSetup(!showEventSetup)}
                     className="w-full px-4 py-2 bg-purple-600 hover:bg-purple-700 rounded-lg transition-colors"
                   >
-                    Configure Smart Event
+                    {showEventSetup ? 'Hide Event Setup' : 'Configure Smart Event'}
                   </button>
+                  
+                  {showEventSetup && (
+                    <div className="max-h-96 overflow-y-auto">
+                      <EventDetailsManager onEventSaved={initializeEvent} />
+                    </div>
+                  )}
                   
                   <div>
                     <label className="block text-sm text-gray-300 mb-2">Master Volume</label>
@@ -509,15 +492,7 @@ function App() {
           </div>
         )}
       </div>
-      </div>
-      {/* Event Setup Wizard */}
-      {showEventWizard && (
-        <EventSetupWizard
-          onEventConfigured={handleEventConfigured}
-          onClose={() => setShowEventWizard(false)}
-        />
-      )}
-    </>
+    </div>
   );
 }
 
