@@ -251,6 +251,39 @@ export const VoiceAnnouncements: React.FC<VoiceAnnouncementsProps> = ({
   };
 
   useEffect(() => {
+    // Listen for immediate announcements
+    const handleImmediateAnnouncement = (event: CustomEvent) => {
+      const { message } = event.detail;
+      setLastAnnouncement(message);
+      if (isEnabled) {
+        playAnnouncement(message);
+      }
+    };
+
+    // Listen for person-specific announcements
+    const handlePersonAnnouncement = (event: CustomEvent) => {
+      const { personName, message } = event.detail;
+      if (shouldAnnouncePersonAgain(personName)) {
+        setLastAnnouncement(message);
+        setLastPersonAnnounced(personName);
+        setLastPersonAnnouncementTime(Date.now());
+        
+        if (isEnabled) {
+          playAnnouncement(message);
+        }
+      }
+    };
+
+    window.addEventListener('immediateAnnouncement', handleImmediateAnnouncement as EventListener);
+    window.addEventListener('personAnnouncement', handlePersonAnnouncement as EventListener);
+
+    return () => {
+      window.removeEventListener('immediateAnnouncement', handleImmediateAnnouncement as EventListener);
+      window.removeEventListener('personAnnouncement', handlePersonAnnouncement as EventListener);
+    };
+  }, [isEnabled]);
+
+  useEffect(() => {
     if (isEnabled) {
       // Vary the interval between 45-90 seconds to feel more natural
       const randomInterval = 45000 + Math.random() * 45000;
@@ -260,20 +293,39 @@ export const VoiceAnnouncements: React.FC<VoiceAnnouncementsProps> = ({
   }, [isEnabled, mood, energy, crowdSize, currentTrack]);
 
   const playAnnouncement = async (text: string) => {
-    if ('speechSynthesis' in window) {
+    try {
+      console.log('🎤 Playing announcement:', text);
+      
       // Cancel any ongoing speech
-      speechSynthesis.cancel();
+      if ('speechSynthesis' in window) {
+        speechSynthesis.cancel();
+      }
       
       // Duck audio before announcement
       onAnnouncementStart?.();
       
       if (voiceSettings.provider === 'elevenlabs') {
+        console.log('🎤 Using ElevenLabs voice...');
         await playElevenLabsVoice(text);
       } else if (voiceSettings.provider === 'openai') {
         await playOpenAIVoice(text);
       } else {
         await playBrowserVoice(text);
       }
+      
+      console.log('✅ Announcement completed');
+    } catch (error) {
+      console.error('❌ Announcement failed:', error);
+      // Fallback to browser voice if ElevenLabs fails
+      if (voiceSettings.provider === 'elevenlabs') {
+        console.log('🔄 Falling back to browser voice...');
+        await playBrowserVoice(text);
+      }
+    } finally {
+      // Always unduck audio after announcement
+      setTimeout(() => {
+        onAnnouncementEnd?.();
+      }, 1000);
     }
   };
 
@@ -338,8 +390,10 @@ export const VoiceAnnouncements: React.FC<VoiceAnnouncementsProps> = ({
         },
       };
       
+      console.log('🎤 Generating speech with ElevenLabs...');
       const audioBuffer = await elevenLabsVoice.generateSpeech(text, settings);
       if (audioBuffer) {
+        console.log('🎤 Playing ElevenLabs audio...');
         await elevenLabsVoice.playAudio(audioBuffer);
         console.log('✅ ElevenLabs speech played successfully');
       } else {
@@ -347,7 +401,7 @@ export const VoiceAnnouncements: React.FC<VoiceAnnouncementsProps> = ({
       }
     } catch (error) {
       console.error('❌ ElevenLabs error, falling back to browser voice:', error);
-      await playBrowserVoice(text);
+      throw error; // Let the parent handle fallback
     }
   };
 

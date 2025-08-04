@@ -19,6 +19,7 @@ interface ElevenLabsSettings {
 export class ElevenLabsVoiceService {
   private apiKey: string;
   private baseUrl = 'https://api.elevenlabs.io/v1';
+  private currentAudio: HTMLAudioElement | null = null;
 
   constructor(apiKey: string) {
     this.apiKey = apiKey;
@@ -89,21 +90,40 @@ export class ElevenLabsVoiceService {
   async playAudio(audioBuffer: ArrayBuffer): Promise<void> {
     return new Promise((resolve, reject) => {
       try {
+        // Stop any currently playing announcement
+        if (this.currentAudio) {
+          this.currentAudio.pause();
+          this.currentAudio = null;
+        }
+
         const blob = new Blob([audioBuffer], { type: 'audio/mpeg' });
         const audioUrl = URL.createObjectURL(blob);
         const audio = new Audio(audioUrl);
+        this.currentAudio = audio;
+        
+        // Set volume to ensure it's audible
+        audio.volume = 0.8;
+        audio.preload = 'auto';
 
         audio.onended = () => {
           URL.revokeObjectURL(audioUrl);
+          this.currentAudio = null;
           resolve();
         };
 
         audio.onerror = (error) => {
           URL.revokeObjectURL(audioUrl);
+          this.currentAudio = null;
           reject(error);
         };
 
-        audio.play();
+        // Ensure audio plays with user interaction context
+        audio.play().then(() => {
+          console.log('✅ ElevenLabs audio playing successfully');
+        }).catch((playError) => {
+          console.error('❌ ElevenLabs audio play error:', playError);
+          reject(playError);
+        });
       } catch (error) {
         reject(error);
       }

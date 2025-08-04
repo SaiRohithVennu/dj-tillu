@@ -95,24 +95,26 @@ function App() {
   } = useGeminiMoodAnalysis(videoElement, true);
 
   const triggerAnnouncement = (message: string) => {
-    if ('speechSynthesis' in window) {
-      duckAudio(); // Duck audio before announcement
+    console.log('🎤 Triggering announcement:', message);
+    duckAudio(); // Duck audio before announcement
+    
+    // Set up global function for voice announcements component
+    (window as any).triggerPersonAnnouncement = (personName: string, customMessage?: string) => {
+      const announcement = customMessage || `Welcome ${personName}! Great to see you here!`;
+      console.log('🎤 Person announcement triggered:', announcement);
       
-      // Use ElevenLabs for much better voice quality
-      console.log('🎤 Triggering announcement:', message);
-      
-      // Set up global function for voice announcements component
-      (window as any).triggerPersonAnnouncement = (personName: string, customMessage?: string) => {
-        const announcement = customMessage || `Welcome ${personName}! Great to see you here!`;
-        console.log('🎤 Person announcement triggered:', announcement);
-        
-        // This will be handled by the VoiceAnnouncements component
-        const event = new CustomEvent('personAnnouncement', {
-          detail: { personName, message: announcement }
-        });
-        window.dispatchEvent(event);
-      };
-    }
+      // This will be handled by the VoiceAnnouncements component
+      const event = new CustomEvent('personAnnouncement', {
+        detail: { personName, message: announcement }
+      });
+      window.dispatchEvent(event);
+    };
+    
+    // Trigger immediate announcement
+    const event = new CustomEvent('immediateAnnouncement', {
+      detail: { message }
+    });
+    window.dispatchEvent(event);
   };
 
   const {
