@@ -97,16 +97,21 @@ function App() {
   const triggerAnnouncement = (message: string) => {
     if ('speechSynthesis' in window) {
       duckAudio(); // Duck audio before announcement
-      const utterance = new SpeechSynthesisUtterance(message);
-      utterance.rate = 0.9;
-      utterance.pitch = 1.1;
-      utterance.volume = 0.8;
-      utterance.onend = () => {
-        setTimeout(() => {
-          unduckAudio(); // Unduck audio after announcement
-        }, 500);
+      
+      // Use ElevenLabs for much better voice quality
+      console.log('🎤 Triggering announcement:', message);
+      
+      // Set up global function for voice announcements component
+      (window as any).triggerPersonAnnouncement = (personName: string, customMessage?: string) => {
+        const announcement = customMessage || `Welcome ${personName}! Great to see you here!`;
+        console.log('🎤 Person announcement triggered:', announcement);
+        
+        // This will be handled by the VoiceAnnouncements component
+        const event = new CustomEvent('personAnnouncement', {
+          detail: { personName, message: announcement }
+        });
+        window.dispatchEvent(event);
       };
-      speechSynthesis.speak(utterance);
     }
   };
 

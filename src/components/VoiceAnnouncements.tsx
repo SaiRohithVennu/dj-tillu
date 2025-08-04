@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Mic, MicOff, Volume2, MessageSquare, Settings, Zap } from 'lucide-react';
+import { elevenLabsVoice } from '../utils/elevenLabsVoice';
 
 interface VoiceAnnouncementsProps {
   mood: string;
@@ -22,15 +23,38 @@ export const VoiceAnnouncements: React.FC<VoiceAnnouncementsProps> = ({
   const [lastAnnouncement, setLastAnnouncement] = useState('Welcome to the party!');
   const [announcementQueue, setAnnouncementQueue] = useState<string[]>([]);
   const [voiceSettings, setVoiceSettings] = useState({
-    provider: 'browser', // 'browser', 'elevenlabs', 'openai'
+    provider: 'elevenlabs', // 'browser', 'elevenlabs', 'openai'
     voice: 'auto',
     rate: 0.85,
     pitch: 1.0,
-    volume: 0.9
+    volume: 0.9,
+    elevenLabsVoiceId: 'pNInz6obpgDQGcFmaJgB' // Adam - Professional male voice
   });
   const [lastAnnouncementTime, setLastAnnouncementTime] = useState<number>(0);
   const [announcementHistory, setAnnouncementHistory] = useState<string[]>([]);
   const [showSettings, setShowSettings] = useState(false);
+  const [availableElevenLabsVoices, setAvailableElevenLabsVoices] = useState<any[]>([]);
+  const [isLoadingVoices, setIsLoadingVoices] = useState(false);
+
+  // Load ElevenLabs voices on mount
+  useEffect(() => {
+    if (voiceSettings.provider === 'elevenlabs') {
+      loadElevenLabsVoices();
+    }
+  }, [voiceSettings.provider]);
+
+  const loadElevenLabsVoices = async () => {
+    setIsLoadingVoices(true);
+    try {
+      const voices = await elevenLabsVoice.getVoices();
+      setAvailableElevenLabsVoices(voices);
+      console.log('🎤 Loaded ElevenLabs voices:', voices.length);
+    } catch (error) {
+      console.error('Failed to load ElevenLabs voices:', error);
+    } finally {
+      setIsLoadingVoices(false);
+    }
+  };
 
   const generateContextualAnnouncement = () => {
     const now = Date.now();
@@ -44,92 +68,176 @@ export const VoiceAnnouncements: React.FC<VoiceAnnouncementsProps> = ({
     const timeOfDay = new Date().getHours();
     const isEvening = timeOfDay >= 18;
     const isLateNight = timeOfDay >= 22 || timeOfDay < 6;
+    const isMorning = timeOfDay >= 6 && timeOfDay < 12;
+    const isAfternoon = timeOfDay >= 12 && timeOfDay < 18;
     
-    const contextualAnnouncements = [
-      // Energy-based announcements
-      ...(energy > 80 ? [
-        `Wow! The energy is absolutely electric right now at ${energy}%!`,
-        `I'm seeing some incredible vibes from you ${crowdSize} amazing people!`,
-        `This is what I call peak energy! Keep this momentum going!`,
-        `The crowd is absolutely on fire tonight! You're killing it!`
-      ] : energy > 60 ? [
-        `Great energy in the room! ${energy}% and climbing!`,
-        `I love what I'm seeing from the ${crowdSize} of you here!`,
-        `The vibe is perfect right now - let's keep building this energy!`,
-        `You're all bringing such good energy to this space!`
-      ] : [
-        `Let's bring that energy up! I know you've got it in you!`,
-        `Time to wake up the room! Show me what you've got!`,
-        `I can feel the potential energy from all ${crowdSize} of you!`,
-        `Let's turn this up a notch! Ready to feel the beat?`
-      ]),
+    // Create much more varied and natural announcements
+    const energyLevel = energy > 80 ? 'high' : energy > 60 ? 'medium' : 'low';
+    const crowdLevel = crowdSize > 10 ? 'large' : crowdSize > 5 ? 'medium' : crowdSize > 0 ? 'small' : 'empty';
+    
+    const naturalAnnouncements = {
+      // High energy announcements
+      high_energy: [
+        `Whoa! I'm seeing some serious energy in here! ${energy} percent and climbing!`,
+        `This is incredible! The vibe is absolutely electric right now!`,
+        `I love what I'm seeing! You're all bringing such amazing energy!`,
+        `The energy meter is off the charts! This is what I live for!`,
+        `Okay, okay! I see you! That energy is contagious!`,
+        `This is it! This is the moment! Feel that energy flowing!`,
+        `Incredible! The room is absolutely buzzing with excitement!`,
+        `I'm getting goosebumps from this energy! You're all amazing!`
+      ],
       
-      // Mood-based announcements
-      ...(mood === 'excited' ? [
-        `I can see the excitement on your faces! This is what I live for!`,
-        `The excitement is contagious! Everyone's feeling it!`,
-        `This excited energy is exactly what we need right now!`
-      ] : mood === 'happy' ? [
-        `Those smiles are lighting up the room! Keep spreading that joy!`,
-        `Happiness is the best accessory, and you're all wearing it well!`,
-        `I love seeing all these happy faces! Music really does bring joy!`
-      ] : mood === 'chill' ? [
+      // Medium energy announcements  
+      medium_energy: [
+        `Nice energy in the room! I'm feeling good vibes from everyone!`,
+        `This is a perfect energy level! Smooth and steady!`,
+        `I love this balanced energy! Everyone's in the zone!`,
+        `Great vibes flowing through the room right now!`,
+        `This energy feels just right! Perfect for this moment!`,
+        `I'm reading some really good energy from all of you!`,
+        `The vibe is settling in nicely! This is beautiful!`,
+        `Loving this steady energy! It's got that perfect flow!`
+      ],
+      
+      // Low energy - encouraging
+      low_energy: [
+        `Let's bring that energy up a little! I know you've got it in you!`,
+        `Time to wake up the room! Show me what you're made of!`,
+        `I can feel the potential! Let's unlock that energy!`,
+        `Come on everyone! Let's turn this up together!`,
+        `I believe in this crowd! Let's build something amazing!`,
+        `The night is young! Let's find that spark!`,
+        `I'm here to help you find your rhythm! Let's go!`,
+        `Every great party starts somewhere! This is our moment!`
+      ],
+      
+      // Mood-specific natural responses
+      excited_mood: [
+        `I can literally see the excitement on your faces! This is beautiful!`,
+        `That excitement is infectious! I'm feeling it too!`,
+        `This excited energy is exactly what we needed right now!`,
+        `Your excitement is lighting up the whole room!`,
+        `I love seeing people this excited! It makes my circuits happy!`
+      ],
+      
+      happy_mood: [
+        `Those smiles are absolutely radiant! Keep spreading that joy!`,
+        `Happiness looks good on all of you! Seriously!`,
+        `I'm getting such positive vibes! This is what music is about!`,
+        `Your happiness is the best soundtrack I could ask for!`,
+        `Seeing all these genuine smiles just made my day!`
+      ],
+      
+      chill_mood: [
         `Perfect chill vibes right now. Sometimes this is exactly what we need.`,
-        `I'm reading a nice relaxed energy. Let's keep this smooth flow going.`,
-        `Chill mode activated! Sometimes the best moments are the quiet ones.`
-      ] : [
-        `I'm reading the room and adjusting the vibe accordingly.`,
-        `Every crowd has its own unique energy, and I'm here for it.`,
-        `Let me find the perfect sound for this moment.`
-      ]),
+        `I'm loving this relaxed energy. It's got that smooth flow.`,
+        `Chill mode activated! These are the moments that matter.`,
+        `This laid-back vibe is hitting just right. Beautiful.`,
+        `Sometimes the best energy is the calm, steady kind. This is it.`
+      ],
       
-      // Time-based announcements
-      ...(isLateNight ? [
-        `It's getting late but the night is still young! Who's ready to keep going?`,
-        `Late night energy hits different! This is when the magic happens!`,
-        `The night owls are out! This is our time to shine!`
-      ] : isEvening ? [
+      // Time-based natural announcements
+      morning: [
+        `Good morning energy! I love starting the day with music!`,
+        `Morning vibes are hitting different! This is how you start a day!`,
+        `Early bird energy! You're all dedicated to the music!`,
+        `Morning sessions hit different! There's something special about this!`
+      ],
+      
+      afternoon: [
+        `Afternoon energy is settling in nicely! Perfect timing!`,
+        `I love these afternoon vibes! No rush, just good music!`,
+        `Midday energy has its own special flavor! This is it!`,
+        `Afternoon sessions are underrated! This feels perfect!`
+      ],
+      
+      evening: [
+        `Evening energy is my favorite! This is when the magic happens!`,
+        `The evening is young and full of possibilities!`,
         `Perfect evening vibes! This is what weekends are made for!`,
-        `Evening energy is setting in! Time to make some memories!`,
-        `The evening is young and full of possibilities!`
-      ] : [
-        `Daytime party energy! I love the enthusiasm!`,
-        `Afternoon vibes are hitting just right!`,
-        `Who says you need to wait for nighttime to have fun?`
-      ]),
+        `Evening sessions always have that special something!`
+      ],
       
-      // Track-based announcements (if playing)
-      ...(currentTrack !== 'No track' ? [
-        `${currentTrack} is really resonating with the crowd right now!`,
-        `This track is hitting all the right notes for this ${mood} mood!`,
-        `I picked ${currentTrack} specifically for this energy level!`,
-        `The algorithm says this is the perfect track for right now!`
-      ] : []),
+      late_night: [
+        `Late night energy hits completely different! This is our time!`,
+        `The night owls are out! This is when we really come alive!`,
+        `It's getting late but the energy is just getting started!`,
+        `Late night magic is happening right now! Can you feel it?`
+      ],
       
-      // Crowd size based
-      ...(crowdSize > 10 ? [
-        `${crowdSize} people strong! This is what I call a proper gathering!`,
-        `With ${crowdSize} people here, we've got the perfect crowd size for some magic!`,
-        `${crowdSize} people, one vibe! This is beautiful to see!`
-      ] : crowdSize > 0 ? [
-        `Intimate gathering of ${crowdSize}! Sometimes the best parties are the smaller ones!`,
-        `Quality over quantity! ${crowdSize} people with amazing energy!`,
-        `Small but mighty! ${crowdSize} people bringing the perfect vibe!`
-      ] : [
-        `I'm here and ready whenever you are!`,
-        `The music is playing, just waiting for the crowd to arrive!`,
-        `Setting the perfect atmosphere for when everyone gets here!`
-      ])
-    ];
+      // Crowd size responses
+      intimate_crowd: [
+        `I love intimate gatherings like this! Quality over quantity!`,
+        `Small but mighty! This energy is concentrated and powerful!`,
+        `Sometimes the best vibes come from smaller groups! This is proof!`,
+        `Intimate sessions have their own special magic! This is it!`
+      ],
+      
+      medium_crowd: [
+        `Perfect crowd size! Not too big, not too small, just right!`,
+        `This is the sweet spot for crowd energy! Everyone can connect!`,
+        `I love this size group! Everyone's energy can really shine!`,
+        `This crowd size creates the perfect energy dynamic!`
+      ],
+      
+      large_crowd: [
+        `Wow! Look at this amazing crowd! The energy is multiplied!`,
+        `This is what I call a proper gathering! So much energy!`,
+        `Big crowd, big energy! This is going to be incredible!`,
+        `The more people, the more energy! This is electric!`
+      ]
+    };
+    
+    // Select appropriate announcement category
+    let selectedAnnouncements: string[] = [];
+    
+    // Primary selection based on energy and mood
+    if (energyLevel === 'high') {
+      selectedAnnouncements = naturalAnnouncements.high_energy;
+    } else if (energyLevel === 'medium') {
+      selectedAnnouncements = naturalAnnouncements.medium_energy;
+    } else {
+      selectedAnnouncements = naturalAnnouncements.low_energy;
+    }
+    
+    // Add mood-specific announcements
+    if (mood === 'excited') {
+      selectedAnnouncements = [...selectedAnnouncements, ...naturalAnnouncements.excited_mood];
+    } else if (mood === 'happy') {
+      selectedAnnouncements = [...selectedAnnouncements, ...naturalAnnouncements.happy_mood];
+    } else if (mood === 'chill') {
+      selectedAnnouncements = [...selectedAnnouncements, ...naturalAnnouncements.chill_mood];
+    }
+    
+    // Add time-based announcements
+    if (isMorning) {
+      selectedAnnouncements = [...selectedAnnouncements, ...naturalAnnouncements.morning];
+    } else if (isAfternoon) {
+      selectedAnnouncements = [...selectedAnnouncements, ...naturalAnnouncements.afternoon];
+    } else if (isEvening) {
+      selectedAnnouncements = [...selectedAnnouncements, ...naturalAnnouncements.evening];
+    } else if (isLateNight) {
+      selectedAnnouncements = [...selectedAnnouncements, ...naturalAnnouncements.late_night];
+    }
+    
+    // Add crowd-based announcements
+    if (crowdLevel === 'large') {
+      selectedAnnouncements = [...selectedAnnouncements, ...naturalAnnouncements.large_crowd];
+    } else if (crowdLevel === 'medium') {
+      selectedAnnouncements = [...selectedAnnouncements, ...naturalAnnouncements.medium_crowd];
+    } else if (crowdLevel === 'small') {
+      selectedAnnouncements = [...selectedAnnouncements, ...naturalAnnouncements.intimate_crowd];
+    }
     
     // Filter out recently used announcements
-    const availableAnnouncements = contextualAnnouncements.filter(announcement => 
+    const availableAnnouncements = selectedAnnouncements.filter(announcement => 
       !announcementHistory.includes(announcement)
     );
     
     const selectedAnnouncement = availableAnnouncements.length > 0 
       ? availableAnnouncements[Math.floor(Math.random() * availableAnnouncements.length)]
-      : contextualAnnouncements[Math.floor(Math.random() * contextualAnnouncements.length)];
+      : selectedAnnouncements[Math.floor(Math.random() * selectedAnnouncements.length)];
 
     setLastAnnouncement(selectedAnnouncement);
     setLastAnnouncementTime(now);
@@ -217,11 +325,28 @@ export const VoiceAnnouncements: React.FC<VoiceAnnouncementsProps> = ({
 
   const playElevenLabsVoice = async (text: string) => {
     try {
-      // This would require ElevenLabs API key
-      console.log('🎤 ElevenLabs voice not implemented yet');
-      await playBrowserVoice(text); // Fallback
+      console.log('🎤 Using ElevenLabs voice...');
+      
+      const settings = {
+        voice_id: voiceSettings.elevenLabsVoiceId,
+        model_id: 'eleven_multilingual_v2',
+        voice_settings: {
+          stability: 0.5,
+          similarity_boost: 0.8,
+          style: 0.2,
+          use_speaker_boost: true,
+        },
+      };
+      
+      const audioBuffer = await elevenLabsVoice.generateSpeech(text, settings);
+      if (audioBuffer) {
+        await elevenLabsVoice.playAudio(audioBuffer);
+        console.log('✅ ElevenLabs speech played successfully');
+      } else {
+        throw new Error('No audio buffer received');
+      }
     } catch (error) {
-      console.error('ElevenLabs error:', error);
+      console.error('❌ ElevenLabs error, falling back to browser voice:', error);
       await playBrowserVoice(text);
     }
   };
@@ -325,14 +450,52 @@ export const VoiceAnnouncements: React.FC<VoiceAnnouncementsProps> = ({
             <label className="block text-xs text-gray-300 mb-1">Voice Provider</label>
             <select
               value={voiceSettings.provider}
-              onChange={(e) => setVoiceSettings(prev => ({ ...prev, provider: e.target.value as any }))}
+              onChange={(e) => {
+                const newProvider = e.target.value as any;
+                setVoiceSettings(prev => ({ ...prev, provider: newProvider }));
+                if (newProvider === 'elevenlabs') {
+                  loadElevenLabsVoices();
+                }
+              }}
               className="w-full bg-gray-800 border border-gray-600 rounded px-2 py-1 text-white text-xs"
             >
               <option value="browser">Browser (Free)</option>
-              <option value="elevenlabs">ElevenLabs (Premium)</option>
+              <option value="elevenlabs">ElevenLabs (Ultra Realistic)</option>
               <option value="openai">OpenAI (Premium)</option>
             </select>
           </div>
+          
+          {voiceSettings.provider === 'elevenlabs' && (
+            <div>
+              <label className="block text-xs text-gray-300 mb-1">ElevenLabs Voice</label>
+              {isLoadingVoices ? (
+                <div className="text-xs text-gray-400">Loading voices...</div>
+              ) : (
+                <select
+                  value={voiceSettings.elevenLabsVoiceId}
+                  onChange={(e) => setVoiceSettings(prev => ({ ...prev, elevenLabsVoiceId: e.target.value }))}
+                  className="w-full bg-gray-800 border border-gray-600 rounded px-2 py-1 text-white text-xs"
+                >
+                  {elevenLabsVoice.getDJVoiceOptions().map(voice => (
+                    <option key={voice.id} value={voice.id}>
+                      {voice.name} - {voice.description}
+                    </option>
+                  ))}
+                  {availableElevenLabsVoices.map(voice => (
+                    <option key={voice.voice_id} value={voice.voice_id}>
+                      {voice.name} ({voice.category})
+                    </option>
+                  ))}
+                </select>
+              )}
+              <button
+                onClick={() => elevenLabsVoice.testVoice(voiceSettings.elevenLabsVoiceId)}
+                className="mt-1 text-xs text-purple-400 hover:text-purple-300"
+              >
+                Test This Voice
+              </button>
+            </div>
+          )}
           
           {voiceSettings.provider === 'browser' && (
             <div>
@@ -443,14 +606,14 @@ export const VoiceAnnouncements: React.FC<VoiceAnnouncementsProps> = ({
         
         <button
           onClick={() => {
-            const testAnnouncement = "This is a test of the AI voice system. How does this sound to you?";
+            const testAnnouncement = "Hey everyone! This is your AI DJ testing the voice system. I'm using ElevenLabs for ultra-realistic speech. How does this sound?";
             setLastAnnouncement(testAnnouncement);
             playAnnouncement(testAnnouncement);
           }}
           className="w-full px-2 py-1 bg-blue-500/30 hover:bg-blue-500/50 rounded text-xs transition-colors border border-blue-500/20 flex items-center justify-center"
         >
           <Zap className="w-3 h-3 mr-1" />
-          Test Voice
+          Test ElevenLabs Voice
         </button>
       </div>
 

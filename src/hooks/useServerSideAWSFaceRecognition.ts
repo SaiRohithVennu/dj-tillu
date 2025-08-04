@@ -104,20 +104,28 @@ export const useServerSideAWSFaceRecognition = ({
               // Trigger recognition callback
               onVIPRecognized(updatedPerson);
               
-              console.log(`🎯 FACE RECOGNIZED: ${vipPerson.name} detected with ${match.confidence.toFixed(1)}% confidence!`);
+              console.log(`🎯 VIP RECOGNIZED: ${vipPerson.name} (${vipPerson.role}) detected with ${match.confidence.toFixed(1)}% confidence!`);
               
-              // Trigger personalized announcement (only once per 5 minutes per person)
+              // Trigger personalized announcement (only once per 2 minutes per person)
               const now = Date.now();
               const lastAnnouncementKey = `last_announcement_${vipPerson.id}`;
               const lastAnnouncementTime = parseInt(localStorage.getItem(lastAnnouncementKey) || '0');
               
-              if (now - lastAnnouncementTime > 300000) { // 5 minutes
+              if (now - lastAnnouncementTime > 120000) { // 2 minutes
                 localStorage.setItem(lastAnnouncementKey, now.toString());
+                
+                // Generate personalized announcement based on role and context
+                const personalizedAnnouncement = generatePersonalizedAnnouncement(vipPerson, match.confidence);
+                
+                // Trigger the announcement through the voice system
+                if (window.triggerPersonAnnouncement) {
+                  window.triggerPersonAnnouncement(vipPerson.name, personalizedAnnouncement);
+                }
                 
                 // Show browser notification for successful recognition
                 if ('Notification' in window && Notification.permission === 'granted') {
                   new Notification(`🎯 VIP Detected!`, {
-                    body: `${vipPerson.name} (${vipPerson.role}) recognized with ${match.confidence.toFixed(1)}% confidence`,
+                    body: personalizedAnnouncement,
                     icon: vipPerson.imageUrl
                   });
                 }
@@ -158,12 +166,71 @@ export const useServerSideAWSFaceRecognition = ({
     };
   }, [eventId, isInitialized]);
 
+  // Generate personalized announcements based on role and context
+  const generatePersonalizedAnnouncement = (person: VIPPerson, confidence: number): string => {
+    const timeOfDay = new Date().getHours();
+    const isEvening = timeOfDay >= 18;
+    const isMorning = timeOfDay >= 6 && timeOfDay < 12;
+    
+    const roleBasedAnnouncements = {
+      'CEO': [
+        `Ladies and gentlemen, our CEO ${person.name} has just arrived! Welcome to the party, boss!`,
+        `The big boss is here! Everyone give a warm welcome to ${person.name}!`,
+        `CEO in the house! ${person.name}, great to see you joining us!`,
+        `Our fearless leader ${person.name} has entered the building! Welcome!`
+      ],
+      'Manager': [
+        `Our amazing manager ${person.name} just walked in! Welcome to the celebration!`,
+        `Manager alert! ${person.name} is here to join the fun!`,
+        `Great to see our manager ${person.name} taking time to celebrate with us!`,
+        `${person.name} our fantastic manager has arrived! Welcome!`
+      ],
+      'Intern': [
+        `Our superstar intern ${person.name} is here! Welcome to the party!`,
+        `Intern power! ${person.name} has joined us! Great to see you!`,
+        `Our amazing intern ${person.name} just arrived! Welcome!`,
+        `${person.name} our talented intern is here! Let's give them a warm welcome!`
+      ],
+      'Birthday Person': [
+        `The birthday star has arrived! Everyone, please welcome ${person.name}!`,
+        `It's the birthday legend! ${person.name} is here! Let's celebrate!`,
+        `The guest of honor has entered! Happy birthday ${person.name}!`,
+        `Birthday royalty in the house! ${person.name}, this party is for you!`
+      ],
+      'Guest Speaker': [
+        `Our distinguished guest speaker ${person.name} has arrived! Welcome!`,
+        `Speaker alert! ${person.name} is here! Thank you for joining us!`,
+        `Our keynote speaker ${person.name} just walked in! Great to see you!`,
+        `${person.name} our featured speaker has arrived! Welcome to the event!`
+      ],
+      'VIP Guest': [
+        `VIP alert! ${person.name} has graced us with their presence!`,
+        `Our special guest ${person.name} is here! Welcome!`,
+        `VIP in the house! Everyone welcome ${person.name}!`,
+        `Our honored guest ${person.name} has arrived! Great to see you!`
+      ]
+    };
+    
+    // Get role-specific announcements or use generic VIP
+    const announcements = roleBasedAnnouncements[person.role as keyof typeof roleBasedAnnouncements] || 
+                         roleBasedAnnouncements['VIP Guest'];
+    
+    // Add time-based context
+    const timeContext = isMorning ? ' Good morning!' : 
+                       isEvening ? ' Perfect timing for the evening!' : 
+                       ' Great timing!';
+    
+    const selectedAnnouncement = announcements[Math.floor(Math.random() * announcements.length)];
+    
+    return selectedAnnouncement + timeContext;
+  };
   return {
     isInitialized,
     isAnalyzing,
     recognizedPeople,
     lastAnalysis,
     error,
-    crowdAnalysis
+    crowdAnalysis,
+    generatePersonalizedAnnouncement
   };
 };
