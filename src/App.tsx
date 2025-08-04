@@ -15,7 +15,9 @@ import { WhooshMoodBrowser } from './components/WhooshMoodBrowser';
 import { EventDetailsManager } from './components/EventDetailsManager';
 import { SmartEventDashboard } from './components/SmartEventDashboard';
 import { ServerSideAWSPanel } from './components/ServerSideAWSPanel';
+import { OpenAIEventHostPanel } from './components/OpenAIEventHostPanel';
 import { useServerSideAWSFaceRecognition } from './hooks/useServerSideAWSFaceRecognition';
+import { useOpenAIEventHost } from './hooks/useOpenAIEventHost';
 import { useAudioPlayer } from './hooks/useAudioPlayer';
 import { useSmartEventDJ } from './hooks/useSmartEventDJ';
 import { useSmartEventEmcee } from './hooks/useSmartEventEmcee';
@@ -78,6 +80,15 @@ function App() {
     isDucked
   } = useAudioPlayer();
 
+  // AWS Face Recognition - Must be declared before OpenAI host
+  const awsFaceRecognition = useServerSideAWSFaceRecognition({
+    videoElement,
+    vipPeople: eventSetup?.vipPeople || [],
+    eventId,
+    enabled: isEventActive && eventSetup !== null,
+    onVIPRecognized: handleVIPRecognized
+  });
+
   // Simple crowd analysis without complex mood tracking
   const mood = currentMood;
   const energy = 75; // Fixed energy level for event hosting
@@ -133,13 +144,34 @@ function App() {
   // Simple state for announcements
   const [isAnnouncing, setIsAnnouncing] = useState(false);
 
-  // AWS Face Recognition
-  const awsFaceRecognition = useServerSideAWSFaceRecognition({
-    videoElement,
-    vipPeople: eventSetup?.vipPeople || [],
-    eventId,
-    enabled: isEventActive && eventSetup !== null,
-    onVIPRecognized: handleVIPRecognized
+  // OpenAI Event Host (Central AI Brain)
+  const openAIHost = useOpenAIEventHost({
+    eventContext: eventSetup ? {
+      eventName: eventSetup.eventName,
+      eventType: eventSetup.eventType,
+      duration: eventSetup.duration,
+      aiPersonality: eventSetup.aiPersonality,
+      vipPeople: eventSetup.vipPeople.map(vip => ({
+        ...vip,
+        recognitionCount: 0
+      })),
+      startTime: new Date()
+    } : {
+      eventName: 'DJ Session',
+      eventType: 'party',
+      duration: 4,
+      aiPersonality: 'energetic',
+      vipPeople: [],
+      startTime: new Date()
+    },
+    recognizedVIPs: awsFaceRecognition.recognizedPeople,
+    crowdSize,
+    tracks: trackLibrary,
+    currentTrack,
+    isPlaying,
+    onAnnouncement: triggerAnnouncement,
+    onTrackChange: loadTrack,
+    enabled: isEventActive && eventSetup !== null
   });
 
   // Smart Event Emcee (new enhanced system)
@@ -173,6 +205,7 @@ function App() {
     // Start smart emcee if event is configured
     if (eventSetup) {
       smartEmcee.startEvent();
+      openAIHost.startAI(); // Start the central AI brain
       setIsAnnouncing(true);
     }
     
@@ -324,9 +357,30 @@ function App() {
 
         {/* Face Recognition - Left side under Track Library */}
         <DraggablePanel
-          title="VIP Face Recognition"
+          title="🧠 OpenAI Event Host"
           initialPosition={{ x: 20, y: 520 }}
           initialSize={{ width: 320, height: 280 }}
+          className="z-40"
+          accentColor="blue"
+        >
+          <OpenAIEventHostPanel
+            isActive={openAIHost.isActive}
+            onStartAI={openAIHost.startAI}
+            onStopAI={openAIHost.stopAI}
+            lastDecision={openAIHost.lastDecision}
+            decisionHistory={openAIHost.decisionHistory}
+            isThinking={openAIHost.isThinking}
+            eventContext={eventSetup}
+            recognizedVIPs={awsFaceRecognition.recognizedPeople}
+            crowdSize={crowdSize}
+          />
+        </DraggablePanel>
+
+        {/* Event Status - Top right */}
+        <DraggablePanel
+          title="Face Recognition"
+          initialPosition={{ x: window.innerWidth - 340, y: 100 }}
+          initialSize={{ width: 320, height: 200 }}
           className="z-40"
           accentColor="green"
         >
@@ -340,37 +394,6 @@ function App() {
             vipPeople={eventSetup?.vipPeople || []}
             enabled={isEventActive && eventSetup !== null}
           />
-        </DraggablePanel>
-
-        {/* Event Status - Top right */}
-        <DraggablePanel
-          title="Event Status"
-          initialPosition={{ x: window.innerWidth - 340, y: 100 }}
-          initialSize={{ width: 320, height: 200 }}
-          className="z-40"
-          accentColor="purple"
-        >
-          <div className="text-center space-y-3">
-            <div className="text-2xl">🎤</div>
-            <h3 className="text-lg font-bold text-white">AI Event Host</h3>
-            <div className="bg-white/10 rounded-lg p-3">
-              <div className="grid grid-cols-2 gap-4 text-center text-sm">
-                <div>
-                  <div className="text-green-300 font-bold text-lg">{awsFaceRecognition.recognizedPeople.length}</div>
-                  <div className="text-gray-400">VIPs Seen</div>
-                </div>
-                <div>
-                  <div className="text-blue-300 font-bold text-lg">{crowdSize}</div>
-                  <div className="text-gray-400">People Present</div>
-                </div>
-              </div>
-            </div>
-            <div className={`px-3 py-2 rounded-lg ${
-              smartEmcee.isActive ? 'bg-green-500/20 text-green-300' : 'bg-gray-500/20 text-gray-300'
-            }`}>
-              {smartEmcee.isActive ? '🟢 AI Host Active' : '⚪ AI Host Inactive'}
-            </div>
-          </div>
         </DraggablePanel>
 
         {/* Voice Announcements - Bottom right */}
@@ -391,8 +414,8 @@ function App() {
           />
         </DraggablePanel>
 
-        {/* Center - Now Playing (when track is selected) */}
-        {currentTrack && !smartEmcee.isActive && (
+        {/* Center - Now Playing (when track is selected and AI not active) */}
+        {currentTrack && !openAIHost.isActive && (
           <DraggablePanel
             title="Now Playing"
             initialPosition={{ x: window.innerWidth / 2 - 200, y: window.innerHeight / 2 - 150 }}
@@ -434,10 +457,10 @@ function App() {
           </DraggablePanel>
         )}
 
-        {/* Smart Event Host Panel (when active) */}
-        {smartEmcee.isActive && (
+        {/* OpenAI Event Host Panel (when active) */}
+        {openAIHost.isActive && (
           <DraggablePanel
-            title="🎤 AI Event Host"
+            title="🧠 AI Event Host Active"
             initialPosition={{ x: window.innerWidth / 2 - 200, y: window.innerHeight / 2 - 150 }}
             initialSize={{ width: 400, height: 350 }}
             className="z-50"
@@ -445,56 +468,66 @@ function App() {
           >
             <div className="text-center space-y-4">
               <div className="w-16 h-16 bg-gradient-to-r from-blue-500 to-purple-500 rounded-full flex items-center justify-center mx-auto">
-                <span className="text-2xl">🎤</span>
+                <span className="text-2xl">🧠</span>
               </div>
               
               <div>
-                <h3 className="text-xl font-bold text-white mb-2">AI Event Host Active</h3>
+                <h3 className="text-xl font-bold text-white mb-2">OpenAI Event Host</h3>
                 <p className="text-gray-300 text-sm">{eventSetup?.eventName}</p>
               </div>
               
               <div className="bg-white/10 rounded-lg p-4">
                 <div className="grid grid-cols-3 gap-4 text-center text-sm">
                   <div>
-                    <div className="text-blue-300 font-bold text-lg">{smartEmcee.recognizedPeople.length}</div>
-                    <div className="text-gray-400">People Seen</div>
+                    <div className="text-blue-300 font-bold text-lg">{awsFaceRecognition.recognizedPeople.length}</div>
+                    <div className="text-gray-400">VIPs Seen</div>
                   </div>
                   <div>
-                    <div className="text-green-300 font-bold text-lg">{smartEmcee.crowdSize}</div>
-                    <div className="text-gray-400">In Frame</div>
+                    <div className="text-green-300 font-bold text-lg">{crowdSize}</div>
+                    <div className="text-gray-400">People Present</div>
                   </div>
                   <div>
-                    <div className="text-purple-300 font-bold text-lg">{smartEmcee.currentEnergy}%</div>
-                    <div className="text-gray-400">Energy</div>
+                    <div className="text-purple-300 font-bold text-lg">{openAIHost.decisionHistory.length}</div>
+                    <div className="text-gray-400">Decisions Made</div>
                   </div>
                 </div>
               </div>
               
-              <div className="bg-blue-600/20 rounded-lg p-3">
+              <div className={`rounded-lg p-3 ${
+                openAIHost.isThinking ? 'bg-yellow-600/20' : 'bg-blue-600/20'
+              }`}>
                 <div className="flex items-center justify-center space-x-2 mb-2">
-                  <div className="w-2 h-2 bg-blue-400 rounded-full animate-pulse"></div>
-                  <span className="text-blue-300 font-medium text-sm">Analyzing Camera Feed</span>
+                  <div className={`w-2 h-2 rounded-full animate-pulse ${
+                    openAIHost.isThinking ? 'bg-yellow-400' : 'bg-blue-400'
+                  }`}></div>
+                  <span className={`font-medium text-sm ${
+                    openAIHost.isThinking ? 'text-yellow-300' : 'text-blue-300'
+                  }`}>
+                    {openAIHost.isThinking ? 'AI Thinking...' : 'AI Monitoring Event'}
+                  </span>
                 </div>
-                <p className="text-xs text-gray-300">
-                  Current Mood: <span className="text-blue-300 capitalize">{smartEmcee.currentMood}</span>
-                </p>
-                {smartEmcee.lastAnalysis && (
+                {openAIHost.lastDecision && (
                   <p className="text-xs text-gray-400 mt-1">
-                    Last Analysis: {smartEmcee.lastAnalysis.toLocaleTimeString()}
+                    Last Decision: {openAIHost.lastDecision.reasoning}
                   </p>
                 )}
               </div>
               
-              {smartEmcee.recognizedPeople.length > 0 && (
+              {awsFaceRecognition.recognizedPeople.length > 0 && (
                 <div className="bg-green-600/20 rounded-lg p-3">
                   <h4 className="text-sm font-medium text-green-300 mb-2">Recognized People:</h4>
                   <div className="space-y-1">
-                    {smartEmcee.recognizedPeople.map(person => (
+                    {awsFaceRecognition.recognizedPeople.slice(0, 3).map(person => (
                       <div key={person.id} className="flex justify-between text-xs">
                         <span className="text-white">{person.name}</span>
                         <span className="text-green-300">{person.recognitionCount}x seen</span>
                       </div>
                     ))}
+                    {awsFaceRecognition.recognizedPeople.length > 3 && (
+                      <div className="text-xs text-gray-400 text-center">
+                        +{awsFaceRecognition.recognizedPeople.length - 3} more
+                      </div>
+                    )}
                   </div>
                 </div>
               )}
@@ -594,10 +627,10 @@ function App() {
 
 
         {/* AI Status Indicator */}
-        {(isEventActive || smartEmcee.isActive) && (
+        {(openAIHost.isActive || isEventActive) && (
           <div className="absolute top-1/2 left-8 transform -translate-y-1/2 z-50">
             <div className={`px-4 py-2 rounded-full backdrop-blur-xl shadow-2xl border transition-all ${
-              smartEmcee.isActive
+              openAIHost.isActive
                 ? 'bg-blue-500/30 border-blue-500/50'
                 : isEventActive
                 ? 'bg-purple-500/30 border-purple-500/50'
@@ -605,14 +638,14 @@ function App() {
             }`}>
               <div className="flex items-center space-x-2">
                 <div className={`w-2 h-2 rounded-full animate-pulse ${
-                  smartEmcee.isActive ? 'bg-blue-400' :
+                  openAIHost.isActive ? 'bg-blue-400' :
                   isEventActive ? 'bg-purple-400' : 'bg-green-400'
                 }`}></div>
                 <span className={`font-semibold text-sm ${
-                  smartEmcee.isActive ? 'text-blue-300' :
+                  openAIHost.isActive ? 'text-blue-300' :
                   isEventActive ? 'text-purple-300' : 'text-green-300'
                 }`}>
-                  {smartEmcee.isActive ? 'AI EVENT HOST ACTIVE' :
+                  {openAIHost.isActive ? 'OPENAI EVENT HOST ACTIVE' :
                    isEventActive ? 'SMART EVENT ACTIVE' : 'AI DJ ACTIVE'}
                 </span>
               </div>
@@ -620,14 +653,14 @@ function App() {
           </div>
         )}
 
-        {/* Smart Emcee Status */}
-        {smartEmcee.isActive && (
+        {/* OpenAI Host Status */}
+        {openAIHost.isActive && (
           <div className="absolute bottom-32 right-8 z-50">
             <div className="px-4 py-2 rounded-full bg-blue-500/30 border border-blue-500/50 backdrop-blur-xl shadow-2xl">
               <div className="flex items-center space-x-2">
                 <div className="w-2 h-2 bg-blue-400 rounded-full animate-pulse"></div>
                 <span className="text-blue-300 font-semibold text-sm">
-                  AI EVENT HOST • {smartEmcee.recognizedPeople.length} VIPs SEEN
+                  OPENAI HOST • {awsFaceRecognition.recognizedPeople.length} VIPs • {openAIHost.isThinking ? 'THINKING' : 'ACTIVE'}
                 </span>
               </div>
             </div>
