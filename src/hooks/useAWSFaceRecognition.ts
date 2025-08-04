@@ -64,19 +64,19 @@ export const useAWSFaceRecognition = ({
         // Initialize S3 bucket
         const bucketReady = await awsRekognition.initializeBucket();
         if (!bucketReady) {
-          throw new Error('Failed to initialize S3 bucket - Check AWS credentials and permissions');
+          throw new Error('Failed to initialize S3 bucket - Check AWS credentials, permissions, and CORS policy');
         }
 
         // Create collection for this event
         const collectionReady = await awsRekognition.createCollection(eventId);
         if (!collectionReady) {
-          throw new Error('Failed to create Rekognition collection - Check Rekognition permissions');
+          throw new Error('Failed to create Rekognition collection - Check AWS Rekognition permissions and service availability');
         }
 
         // Index VIP faces
         const facesIndexed = await awsRekognition.indexVIPFaces(eventId, vipPeople);
         if (!facesIndexed) {
-          throw new Error('Failed to index VIP faces - Check if photos are valid');
+          throw new Error('Failed to index VIP faces - Check if photos are valid and S3 upload permissions');
         }
 
         setIsInitialized(true);
@@ -86,9 +86,18 @@ export const useAWSFaceRecognition = ({
         console.error('❌ AWS Rekognition initialization failed:', {
           message: error.message,
           stack: error.stack,
-          code: error.code
+          code: error.code,
+          name: error.name
         });
-        setError(`AWS Error: ${error.message}`);
+        
+        // Provide user-friendly error messages
+        if (error.message.includes('CORS')) {
+          setError(`CORS Configuration Issue: ${error.message}`);
+        } else if (error.message.includes('Credentials')) {
+          setError(`AWS Credentials Issue: ${error.message}`);
+        } else {
+          setError(`AWS Service Error: ${error.message}`);
+        }
         setIsInitialized(false);
       }
     };

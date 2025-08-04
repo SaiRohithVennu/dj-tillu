@@ -7,7 +7,6 @@ import {
   DetectFacesCommand,
   DeleteCollectionCommand 
 } from '@aws-sdk/client-rekognition';
-import { fromEnv } from '@aws-sdk/credential-providers';
 
 interface FaceMatch {
   confidence: number;
@@ -45,12 +44,22 @@ export class AWSRekognitionService {
     this.s3Client = new S3Client({
       region,
       credentials,
-      forcePathStyle: true, // Important for browser compatibility
+      forcePathStyle: false,
+      useAccelerateEndpoint: false,
+      useDualstackEndpoint: false,
+      requestHandler: {
+        requestTimeout: 30000,
+        httpsAgent: undefined
+      }
     });
 
     this.rekognitionClient = new RekognitionClient({
       region,
       credentials,
+      requestHandler: {
+        requestTimeout: 30000,
+        httpsAgent: undefined
+      }
     });
     
     // Log configuration for debugging
@@ -67,18 +76,49 @@ export class AWSRekognitionService {
     try {
       console.log('🔍 AWS S3: Checking if bucket exists:', this.bucketName);
       
-      // Check if bucket exists
-      await this.s3Client.send(new HeadBucketCommand({ Bucket: this.bucketName }));
+      // Try to check if bucket exists with proper error handling
+      try {
+        await this.s3Client.send(new HeadBucketCommand({ 
+          Bucket: this.bucketName,
+          $metadata: {
+            requestId: `head-bucket-${Date.now()}`
+          }
+        }));
+      } catch (headError: any) {
+        // If HeadBucket fails, try a simple ListObjects to test access
+        console.log('🔄 HeadBucket failed, trying alternative access test...');
+        
+        // This is a more browser-friendly way to test bucket access
+        const testCommand = new PutObjectCommand({
+          Bucket: this.bucketName,
+          Key: 'test-access.txt',
+          Body: 'test',
+          ContentType: 'text/plain'
+        });
+        
+        await this.s3Client.send(testCommand);
+        console.log('✅ Bucket access confirmed via test upload');
+      }
+      
       console.log('✅ AWS S3: Bucket exists and accessible');
       return true;
     } catch (error: any) {
       console.error('❌ AWS S3: Cannot access bucket:', {
         bucketName: this.bucketName,
         error: error.message,
-        code: error.name
+        code: error.name,
+        statusCode: error.$metadata?.httpStatusCode,
+        requestId: error.$metadata?.requestId
       });
       
-      throw new Error(`S3 bucket '${this.bucketName}' not accessible. Make sure CORS allows "http://localhost:5173" (without trailing slash).`);
+      // Provide more specific error guidance
+      if (error.message.includes('fetch')) {
+        throw new Error(`CORS Error: S3 bucket '${this.bucketName}' CORS policy blocks browser requests. Check AWS S3 Console → Bucket → Permissions → CORS configuration.`);
+      } else if (error.name === 'CredentialsProviderError') {
+        throw new Error(`AWS Credentials Error: Check your VITE_AWS_ACCESS_KEY_ID and VITE_AWS_SECRET_ACCESS_KEY environment variables.`);
+      } else {
+        throw new Error(`S3 Access Error: ${error.message}. Check bucket permissions and CORS policy.`);
+      }
     }
   }
 
