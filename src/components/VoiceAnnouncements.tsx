@@ -305,8 +305,13 @@ export const VoiceAnnouncements: React.FC<VoiceAnnouncementsProps> = ({
       onAnnouncementStart?.();
       
       if (voiceSettings.provider === 'elevenlabs') {
-        console.log('🎤 Using ElevenLabs voice...');
-        await playElevenLabsVoice(text);
+        try {
+          console.log('🎤 Using ElevenLabs voice...');
+          await playElevenLabsVoice(text);
+        } catch (error) {
+          console.warn('⚠️ ElevenLabs unavailable, falling back to browser voice:', error);
+          await playBrowserVoice(text);
+        }
       } else if (voiceSettings.provider === 'openai') {
         await playOpenAIVoice(text);
       } else {
@@ -316,11 +321,6 @@ export const VoiceAnnouncements: React.FC<VoiceAnnouncementsProps> = ({
       console.log('✅ Announcement completed');
     } catch (error) {
       console.error('❌ Announcement failed:', error);
-      // Fallback to browser voice if ElevenLabs fails
-      if (voiceSettings.provider === 'elevenlabs') {
-        console.log('🔄 Falling back to browser voice...');
-        await playBrowserVoice(text);
-      }
     } finally {
       // Always unduck audio after announcement
       setTimeout(() => {
@@ -376,32 +376,27 @@ export const VoiceAnnouncements: React.FC<VoiceAnnouncementsProps> = ({
   };
 
   const playElevenLabsVoice = async (text: string) => {
-    try {
-      console.log('🎤 Using ElevenLabs voice...');
-      
-      const settings = {
-        voice_id: voiceSettings.elevenLabsVoiceId,
-        model_id: 'eleven_multilingual_v2',
-        voice_settings: {
-          stability: 0.5,
-          similarity_boost: 0.8,
-          style: 0.2,
-          use_speaker_boost: true,
-        },
-      };
-      
-      console.log('🎤 Generating speech with ElevenLabs...');
-      const audioBuffer = await elevenLabsVoice.generateSpeech(text, settings);
-      if (audioBuffer) {
-        console.log('🎤 Playing ElevenLabs audio...');
-        await elevenLabsVoice.playAudio(audioBuffer);
-        console.log('✅ ElevenLabs speech played successfully');
-      } else {
-        throw new Error('No audio buffer received');
-      }
-    } catch (error) {
-      console.error('❌ ElevenLabs error, falling back to browser voice:', error);
-      throw error; // Let the parent handle fallback
+    console.log('🎤 Using ElevenLabs voice...');
+    
+    const settings = {
+      voice_id: voiceSettings.elevenLabsVoiceId,
+      model_id: 'eleven_multilingual_v2',
+      voice_settings: {
+        stability: 0.5,
+        similarity_boost: 0.8,
+        style: 0.2,
+        use_speaker_boost: true,
+      },
+    };
+    
+    console.log('🎤 Generating speech with ElevenLabs...');
+    const audioBuffer = await elevenLabsVoice.generateSpeech(text, settings);
+    if (audioBuffer) {
+      console.log('🎤 Playing ElevenLabs audio...');
+      await elevenLabsVoice.playAudio(audioBuffer);
+      console.log('✅ ElevenLabs speech played successfully');
+    } else {
+      throw new Error('No audio buffer received');
     }
   };
 
