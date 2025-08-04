@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
+import { serverSideAWS } from '../utils/serverSideAWS';
 
 interface VIPPerson {
   id: string;
@@ -25,234 +26,150 @@ export const useServerSideAWSFaceRecognition = ({
   enabled,
   onVIPRecognized
 }: UseServerSideAWSFaceRecognitionProps) => {
+  const [isEnabled, setIsEnabled] = useState(false);
+  const [status, setStatus] = useState<string>('disabled');
+  const [recognitionResults, setRecognitionResults] = useState<VIPPerson[]>([]);
   const [isInitialized, setIsInitialized] = useState(false);
-  const [isAnalyzing, setIsAnalyzing] = useState(false);
-  const [recognizedPeople, setRecognizedPeople] = useState<VIPPerson[]>([]);
-  const [lastAnalysis, setLastAnalysis] = useState<Date | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [crowdAnalysis, setCrowdAnalysis] = useState({
-    faceCount: 0,
-    emotions: [] as string[],
-    averageAge: 0,
-    dominantEmotion: 'neutral'
-  });
 
   const intervalRef = useRef<NodeJS.Timeout>();
   const initializationRef = useRef<boolean>(false);
 
-  // Helper function to convert File to base64
-  const fileToBase64 = (file: File): Promise<string> => {
-    return new Promise((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onload = () => {
-        const result = reader.result as string;
-        // Remove data URL prefix to get just the base64 data
-        const base64 = result.split(',')[1];
-        resolve(base64);
-      };
-      reader.onerror = reject;
-      reader.readAsDataURL(file);
-    });
-  };
-
-  // Initialize server-side AWS face recognition
+  // Initialize AWS services when VIP people are available
   useEffect(() => {
     const initialize = async () => {
-      if (initializationRef.current || !vipPeople.length || !enabled) return;
+      if (initializationRef.current || !vipPeople.length || !isEnabled) return;
       
       initializationRef.current = true;
+      setStatus('initializing');
       setError(null);
 
       try {
-        console.log('🔧 Initializing server-side AWS face recognition...');
+        console.log('🔧 Initializing server-side AWS services for', vipPeople.length, 'VIP people...');
         
-        // Convert VIP photos to base64 for server processing
-        const vipData = await Promise.all(vipPeople.map(async (person) => ({
-          id: person.id,
-          name: person.name,
-          role: person.role,
-          imageData: person.imageFile ? await fileToBase64(person.imageFile) : null
-        })));
-
-        // Call Supabase Edge Function to initialize AWS services
-        const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
-        const response = await fetch(`${supabaseUrl}/functions/v1/aws-face-recognition`, {
-          method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            action: 'initialize',
-            eventId,
-            vipPeople: vipData.filter(person => person.imageData) // Only include people with photos
-          })
+        // Log VIP people being indexed
+        vipPeople.forEach(person => {
+          console.log(`👤 Indexing VIP: ${person.name} (${person.role}) - Has photo: ${!!person.imageFile}`);
         });
 
-        if (!response.ok) {
-          const errorData = await response.json();
-          throw new Error(errorData.error || `Server error: ${response.status}`);
-        }
-
-        const result = await response.json();
+        const result = await serverSideAWS.initializeEvent(eventId, vipPeople);
         
         if (result.success) {
           setIsInitialized(true);
-          console.log('✅ Server-side AWS face recognition initialized successfully');
-          console.log(`📊 Indexed ${result.vipCount} VIP faces`);
+          setStatus('active');
+          console.log('✅ Server-side AWS initialized successfully!');
         } else {
-          throw new Error(result.error || 'Initialization failed');
+          throw new Error(result.message || 'AWS initialization failed');
         }
 
       } catch (error: any) {
         console.error('❌ Server-side AWS initialization failed:', error);
         setError(error.message);
+        setStatus('error');
         setIsInitialized(false);
       }
     };
 
-    if (vipPeople.length > 0 && enabled) {
+    if (vipPeople.length > 0 && isEnabled) {
       initialize();
+    } else if (vipPeople.length === 0) {
+      setStatus('disabled');
+      setIsInitialized(false);
+      initializationRef.current = false;
     }
-  }, [vipPeople, eventId, enabled]);
+  }, [vipPeople, eventId, isEnabled]);
 
   // Main recognition loop
   useEffect(() => {
-    if (!enabled || !isInitialized || !videoElement) {
+    if (!isEnabled || !isInitialized || !videoElement) {
       return;
     }
 
     const runRecognition = async () => {
-      if (isAnalyzing) return;
-
-      setIsAnalyzing(true);
-      setError(null);
-
       try {
-        // Capture current video frame
-        const canvas = document.createElement('canvas');
-        const ctx = canvas.getContext('2d');
-        if (!ctx) throw new Error('Canvas context not available');
-
-        canvas.width = videoElement.videoWidth;
-        canvas.height = videoElement.videoHeight;
-        ctx.drawImage(videoElement, 0, 0);
+        const result = await serverSideAWS.recognizeFaces(eventId, videoElement);
         
-        // Convert to base64
-        const imageBase64 = canvas.toDataURL('image/jpeg', 0.8).split(',')[1];
+        // Process recognition results
+        for (const match of result.matches) {
+          if (match.confidence > 75) {
+            const vipPerson = vipPeople.find(p => p.id === match.personId);
+            if (vipPerson) {
+              const updatedPerson = {
+                ...vipPerson,
+                recognitionCount: (vipPerson.recognitionCount || 0) + 1,
+                lastSeen: new Date()
+              };
 
-        // Call server-side recognition
-        const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
-        const response = await fetch(`${supabaseUrl}/functions/v1/aws-face-recognition`, {
-          method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            action: 'recognize',
-            eventId,
-            imageData: imageBase64
-          })
-        });
+              setRecognitionResults(prev => {
+                const existing = prev.find(p => p.id === vipPerson.id);
+                if (existing) {
+                  return prev.map(p => p.id === vipPerson.id ? updatedPerson : p);
+                } else {
+                  return [...prev, updatedPerson];
+                }
+              });
 
-        if (!response.ok) {
-          const errorData = await response.json();
-          throw new Error(errorData.error || `Recognition error: ${response.status}`);
-        }
-
-        const result = await response.json();
-
-        if (result.success) {
-          // Update crowd analysis
-          setCrowdAnalysis(result.crowdAnalysis);
-
-          // Process VIP matches
-          for (const match of result.matches) {
-            if (match.confidence > 75) { // High confidence threshold
-              const vipPerson = vipPeople.find(p => p.id === match.personId);
-              if (vipPerson) {
-                const updatedPerson = {
-                  ...vipPerson,
-                  recognitionCount: (vipPerson.recognitionCount || 0) + 1,
-                  lastSeen: new Date()
-                };
-
-                setRecognizedPeople(prev => {
-                  const existing = prev.find(p => p.id === vipPerson.id);
-                  if (existing) {
-                    return prev.map(p => p.id === vipPerson.id ? updatedPerson : p);
-                  } else {
-                    return [...prev, updatedPerson];
-                  }
-                });
-
-                // Trigger recognition callback
-                onVIPRecognized(updatedPerson);
-                
-                console.log(`🎯 Server-side AWS: ${vipPerson.name} recognized with ${match.confidence.toFixed(1)}% confidence`);
-              }
+              // Trigger recognition callback
+              onVIPRecognized(updatedPerson);
+              
+              console.log(`🎯 🎉 VIP RECOGNIZED: ${vipPerson.name} (${match.confidence.toFixed(1)}% confidence)`);
             }
           }
-
-          setLastAnalysis(new Date());
         }
 
       } catch (error: any) {
-        console.error('❌ Server-side face recognition error:', error);
+        console.error('❌ Face recognition error:', error);
         setError(error.message);
-      } finally {
-        setIsAnalyzing(false);
       }
     };
 
     // Run recognition every 3 seconds
     intervalRef.current = setInterval(runRecognition, 3000);
     
-    // Run immediately
-    runRecognition();
+    // Run initial recognition after 2 seconds
+    setTimeout(runRecognition, 2000);
 
     return () => {
       if (intervalRef.current) {
         clearInterval(intervalRef.current);
       }
     };
-  }, [enabled, isInitialized, videoElement, eventId, vipPeople, isAnalyzing]);
+  }, [isEnabled, isInitialized, videoElement, eventId, vipPeople]);
 
   // Cleanup on unmount
   useEffect(() => {
     return () => {
       if (isInitialized) {
-        // Call cleanup endpoint
-        const cleanup = async () => {
-          try {
-            const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
-            await fetch(`${supabaseUrl}/functions/v1/aws-face-recognition`, {
-              method: 'POST',
-              headers: {
-                'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
-                'Content-Type': 'application/json',
-              },
-              body: JSON.stringify({
-                action: 'cleanup',
-                eventId
-              })
-            });
-          } catch (error) {
-            console.warn('Cleanup error:', error);
-          }
-        };
-        cleanup();
+        serverSideAWS.cleanupEvent(eventId);
       }
     };
   }, [eventId, isInitialized]);
 
+  const toggleEnabled = () => {
+    const newEnabled = !isEnabled;
+    setIsEnabled(newEnabled);
+    
+    if (!newEnabled) {
+      setStatus('disabled');
+      setIsInitialized(false);
+      initializationRef.current = false;
+      if (intervalRef.current) {
+        clearInterval(intervalRef.current);
+      }
+    } else if (vipPeople.length > 0) {
+      setStatus('initializing');
+      initializationRef.current = false; // Allow re-initialization
+    }
+    
+    console.log(`🎯 Face Recognition: ${newEnabled ? 'Enabled' : 'Disabled'}`);
+  };
+
   return {
-    isInitialized,
-    isAnalyzing,
-    recognizedPeople,
-    lastAnalysis,
+    isEnabled,
+    toggleEnabled,
+    status,
+    recognitionResults,
     error,
-    crowdAnalysis
+    isInitialized
   };
 };
