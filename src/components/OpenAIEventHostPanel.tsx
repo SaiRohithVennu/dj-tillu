@@ -1,152 +1,190 @@
-import React, { useState } from 'react';
-import { Camera, Mic, MicOff, Settings, Play, Pause, Users, Brain } from 'lucide-react';
-import { useOpenAIEventHost } from '../hooks/useOpenAIEventHost';
+import React from 'react';
+import { Brain, Zap, MessageSquare, Clock, Users, Music, CheckCircle, AlertCircle } from 'lucide-react';
 
 interface OpenAIEventHostPanelProps {
-  videoElement?: HTMLVideoElement | null;
-  onVIPRecognized?: (vip: any) => void;
+  isActive: boolean;
+  onStartAI: () => void;
+  onStopAI: () => void;
+  lastDecision: any;
+  decisionHistory: any[];
+  isThinking: boolean;
+  eventContext: any;
+  recognizedVIPs: any[];
+  crowdSize: number;
 }
 
 export const OpenAIEventHostPanel: React.FC<OpenAIEventHostPanelProps> = ({
-  videoElement,
-  onVIPRecognized
+  isActive,
+  onStartAI,
+  onStopAI,
+  lastDecision,
+  decisionHistory,
+  isThinking,
+  eventContext,
+  recognizedVIPs,
+  crowdSize
 }) => {
-  const [showSettings, setShowSettings] = useState(false);
-  
-  const {
-    isActive,
-    isAnalyzing,
-    lastAnalysis,
-    peopleCount,
-    recognizedVIPs,
-    announcements,
-    startHost,
-    stopHost,
-    forceAnalysis,
-    testVoiceSystem
-  } = useOpenAIEventHost(videoElement, onVIPRecognized);
+  const formatTime = (date: Date) => {
+    return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  };
+
+  const getPriorityColor = (priority: string) => {
+    switch (priority) {
+      case 'high': return 'text-red-400';
+      case 'medium': return 'text-yellow-400';
+      case 'low': return 'text-green-400';
+      default: return 'text-gray-400';
+    }
+  };
 
   return (
-    <div className="bg-white rounded-lg shadow-lg p-6 max-w-md">
-      <div className="flex items-center justify-between mb-4">
+    <div className="space-y-4">
+      {/* Header */}
+      <div className="flex items-center justify-between">
         <div className="flex items-center space-x-2">
-          <Brain className="w-6 h-6 text-purple-600" />
-          <h3 className="text-lg font-semibold text-gray-800">AI Event Host</h3>
+          <Brain className="w-5 h-5 text-blue-400" />
+          <span className="text-white font-medium">OpenAI Event Host</span>
+          {isActive && isThinking && (
+            <div className="w-2 h-2 bg-blue-400 rounded-full animate-pulse"></div>
+          )}
         </div>
         <button
-          onClick={() => setShowSettings(!showSettings)}
-          className="p-2 text-gray-500 hover:text-gray-700 rounded-lg hover:bg-gray-100"
+          onClick={isActive ? onStopAI : onStartAI}
+          className={`px-3 py-1 rounded text-xs transition-colors ${
+            isActive 
+              ? 'bg-red-600 hover:bg-red-700 text-white' 
+              : 'bg-green-600 hover:bg-green-700 text-white'
+          }`}
         >
-          <Settings className="w-5 h-5" />
+          {isActive ? 'STOP AI' : 'START AI'}
         </button>
       </div>
 
-      {/* Status Display */}
-      <div className="mb-4">
-        <div className="flex items-center space-x-2 mb-2">
-          <div className={`w-3 h-3 rounded-full ${isActive ? 'bg-green-500' : 'bg-gray-400'}`} />
-          <span className="text-sm font-medium">
-            {isActive ? 'Active' : 'Inactive'}
-          </span>
-          {isAnalyzing && (
-            <div className="flex items-center space-x-1 text-blue-600">
-              <Camera className="w-4 h-4 animate-pulse" />
-              <span className="text-xs">Analyzing...</span>
-            </div>
-          )}
-        </div>
+      {/* AI Status */}
+      <div className="bg-white/10 rounded-lg p-3 border border-white/20">
+        <div className="space-y-2 text-sm">
+          <div className="flex justify-between">
+            <span className="text-gray-300">AI Status:</span>
+            <span className={`font-semibold ${
+              isThinking ? 'text-yellow-300' : 
+              isActive ? 'text-green-300' : 'text-red-300'
+            }`}>
+              {isThinking ? 'Thinking...' :
+               isActive ? 'Active' : 'Inactive'}
+            </span>
+          </div>
+          
+          <div className="flex justify-between">
+            <span className="text-gray-300">Event:</span>
+            <span className="text-purple-300 font-semibold">{eventContext?.eventName || 'None'}</span>
+          </div>
+          
+          <div className="flex justify-between">
+            <span className="text-gray-300">Personality:</span>
+            <span className="text-blue-300 capitalize">{eventContext?.aiPersonality || 'None'}</span>
+          </div>
 
-        {/* People Count */}
-        <div className="flex items-center space-x-2 text-sm text-gray-600">
-          <Users className="w-4 h-4" />
-          <span>{peopleCount} people detected</span>
+          <div className="flex justify-between">
+            <span className="text-gray-300">VIPs Present:</span>
+            <span className="text-green-300 font-semibold">{recognizedVIPs.length}</span>
+          </div>
+
+          <div className="flex justify-between">
+            <span className="text-gray-300">Crowd Size:</span>
+            <span className="text-blue-300 font-semibold">{crowdSize}</span>
+          </div>
         </div>
       </div>
 
-      {/* Controls */}
-      <div className="space-y-3 mb-4">
-        <div className="flex space-x-2">
-          <button
-            onClick={isActive ? stopHost : startHost}
-            className={`flex-1 flex items-center justify-center space-x-2 px-4 py-2 rounded-lg font-medium ${
-              isActive
-                ? 'bg-red-500 hover:bg-red-600 text-white'
-                : 'bg-green-500 hover:bg-green-600 text-white'
-            }`}
-          >
-            {isActive ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4" />}
-            <span>{isActive ? 'Stop AI' : 'Start AI'}</span>
-          </button>
-        </div>
-
-        <div className="flex space-x-2">
-          <button
-            onClick={forceAnalysis}
-            disabled={!isActive}
-            className="flex-1 px-3 py-2 bg-blue-500 hover:bg-blue-600 disabled:bg-gray-300 text-white rounded-lg text-sm font-medium"
-          >
-            Force Analysis Now
-          </button>
-          <button
-            onClick={testVoiceSystem}
-            className="flex-1 px-3 py-2 bg-purple-500 hover:bg-purple-600 text-white rounded-lg text-sm font-medium"
-          >
-            Test Voice System
-          </button>
-        </div>
-      </div>
-
-      {/* Recent Activity */}
-      <div className="space-y-3">
-        {/* VIP Recognition */}
-        {recognizedVIPs.length > 0 && (
-          <div>
-            <h4 className="text-sm font-medium text-gray-700 mb-2">Recent VIP Recognition</h4>
-            <div className="space-y-1">
-              {recognizedVIPs.slice(-3).map((vip, index) => (
-                <div key={index} className="text-xs bg-green-50 text-green-700 px-2 py-1 rounded">
-                  {vip.name} - {vip.confidence}% confidence
-                </div>
-              ))}
+      {/* Last Decision */}
+      {lastDecision && (
+        <div className="bg-blue-600/10 rounded-lg p-3 border border-blue-500/20">
+          <h4 className="text-sm font-medium text-blue-300 mb-2 flex items-center">
+            <MessageSquare className="w-4 h-4 mr-1" />
+            Last AI Decision
+          </h4>
+          <div className="space-y-2 text-xs">
+            <div className="flex justify-between">
+              <span className="text-gray-300">Priority:</span>
+              <span className={`font-semibold ${getPriorityColor(lastDecision.priority)}`}>
+                {lastDecision.priority.toUpperCase()}
+              </span>
             </div>
-          </div>
-        )}
-
-        {/* Recent Announcements */}
-        {announcements.length > 0 && (
-          <div>
-            <h4 className="text-sm font-medium text-gray-700 mb-2">Recent Announcements</h4>
-            <div className="space-y-1 max-h-32 overflow-y-auto">
-              {announcements.slice(-3).map((announcement, index) => (
-                <div key={index} className="text-xs bg-blue-50 text-blue-700 px-2 py-1 rounded">
-                  {announcement.message}
-                </div>
-              ))}
+            
+            {lastDecision.announcement && (
+              <div>
+                <span className="text-gray-300">Announcement:</span>
+                <p className="text-white text-sm mt-1 italic">"{lastDecision.announcement}"</p>
+              </div>
+            )}
+            
+            {lastDecision.suggestedTrack && (
+              <div className="flex justify-between">
+                <span className="text-gray-300">Music Suggestion:</span>
+                <span className="text-purple-300">{lastDecision.suggestedTrack}</span>
+              </div>
+            )}
+            
+            <div>
+              <span className="text-gray-300">Reasoning:</span>
+              <p className="text-gray-400 text-xs mt-1">{lastDecision.reasoning}</p>
             </div>
-          </div>
-        )}
-
-        {/* Last Analysis */}
-        {lastAnalysis && (
-          <div className="text-xs text-gray-500">
-            Last analysis: {new Date(lastAnalysis).toLocaleTimeString()}
-          </div>
-        )}
-      </div>
-
-      {/* Settings Panel */}
-      {showSettings && (
-        <div className="mt-4 pt-4 border-t border-gray-200">
-          <h4 className="text-sm font-medium text-gray-700 mb-2">Settings</h4>
-          <div className="space-y-2 text-xs text-gray-600">
-            <div>Analysis Interval: 10 seconds</div>
-            <div>Voice System: ElevenLabs + Browser Fallback</div>
-            <div>Recognition: OpenAI Vision API</div>
           </div>
         </div>
       )}
+
+      {/* Decision History */}
+      {decisionHistory.length > 0 && (
+        <div>
+          <h4 className="text-sm font-medium text-gray-300 mb-2">Recent Decisions</h4>
+          <div className="space-y-1 max-h-32 overflow-y-auto">
+            {decisionHistory.slice(-5).reverse().map((decision, index) => (
+              <div
+                key={index}
+                className="p-2 bg-white/5 rounded text-xs"
+              >
+                <div className="flex justify-between items-center">
+                  <span className={`font-medium ${getPriorityColor(decision.priority)}`}>
+                    {decision.priority.toUpperCase()}
+                  </span>
+                  <div className="flex items-center space-x-2">
+                    {decision.shouldAnnounce && (
+                      <MessageSquare className="w-3 h-3 text-blue-400" />
+                    )}
+                    {decision.shouldChangeMusic && (
+                      <Music className="w-3 h-3 text-purple-400" />
+                    )}
+                  </div>
+                </div>
+                {decision.announcement && (
+                  <p className="text-gray-300 mt-1 truncate">"{decision.announcement}"</p>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* AI Thinking Indicator */}
+      {isThinking && (
+        <div className="bg-yellow-600/20 rounded-lg p-3 border border-yellow-500/30">
+          <div className="flex items-center space-x-2">
+            <div className="w-4 h-4 border-2 border-yellow-400 border-t-transparent rounded-full animate-spin"></div>
+            <span className="text-yellow-300 text-sm">AI is analyzing the situation...</span>
+          </div>
+        </div>
+      )}
+
+      {/* Info */}
+      <div className="bg-blue-600/10 rounded-lg p-2 border border-blue-500/20">
+        <p className="text-xs text-gray-300 text-center">
+          <strong>OpenAI-Powered Event Host</strong><br />
+          {isActive 
+            ? 'Making intelligent decisions every 15 seconds based on face recognition'
+            : 'Click START AI to enable autonomous event hosting'
+          }
+        </p>
+      </div>
     </div>
   );
 };
-
-export default OpenAIEventHostPanel

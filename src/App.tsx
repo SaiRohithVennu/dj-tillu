@@ -1,18 +1,68 @@
-import React, { useState, useRef, useEffect } from 'react';
-import { Play, Pause, Settings, Volume2, Music } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { EventSetupWizard } from './components/EventSetupWizard';
+import { DraggablePanel } from './components/DraggablePanel';
+import { TrackList } from './components/TrackList';
+import { NowPlaying } from './components/NowPlaying';
+import { AudiusBrowser } from './components/AudiusBrowser';
+import { VideoAnalyzer } from './components/VideoAnalyzer';
+import { VoiceAnnouncements } from './components/VoiceAnnouncements';
+import { AudioVisualizer } from './components/AudioVisualizer';
+import { FloatingControls } from './components/FloatingControls';
+import { FullscreenVideoBackground } from './components/FullscreenVideoBackground';
+import { MoodPlaylistManager } from './components/MoodPlaylistManager';
+import { SupabaseTrackManager } from './components/SupabaseTrackManager';
+import { WhooshMoodBrowser } from './components/WhooshMoodBrowser';
+import { EventDetailsManager } from './components/EventDetailsManager';
+import { SmartEventDashboard } from './components/SmartEventDashboard';
+import { ServerSideAWSPanel } from './components/ServerSideAWSPanel';
+import { OpenAIEventHostPanel } from './components/OpenAIEventHostPanel';
+import { useServerSideAWSFaceRecognition } from './hooks/useServerSideAWSFaceRecognition';
+import { useContinuousAIAgent } from './hooks/useContinuousAIAgent';
 import { useAudioPlayer } from './hooks/useAudioPlayer';
-import { useTrackLibrary } from './hooks/useTrackLibrary';
-import { useMoodAnalysis } from './hooks/useMoodAnalysis';
+import { useSmartEventDJ } from './hooks/useSmartEventDJ';
+import { useSmartEventEmcee } from './hooks/useSmartEventEmcee';
 import { Track } from './data/tracks';
+import { useTrackLibrary } from './hooks/useTrackLibrary';
+import { ContinuousAIAgentPanel } from './components/ContinuousAIAgentPanel';
+
+interface EventSetup {
+  eventName: string;
+  eventType: 'birthday' | 'corporate' | 'wedding' | 'party' | 'conference';
+  duration: number;
+  vipPeople: Array<{
+    id: string;
+    name: string;
+    role: string;
+    imageFile?: File;
+    imageUrl?: string;
+    greeting?: string;
+  }>;
+  aiPersonality: 'humorous' | 'formal' | 'energetic' | 'professional';
+  specialMoments: string[];
+}
 
 function App() {
+  const { 
+    tracks: trackLibrary, 
+    isLoading: libraryLoading, 
+    error: libraryError,
+    addTrack: addToLibrary,
+    refreshLibrary 
+  } = useTrackLibrary();
+  
+  const [showSetup, setShowSetup] = useState(true);
+  const [eventSetup, setEventSetup] = useState<EventSetup | null>(null);
   const [showSettings, setShowSettings] = useState(false);
-  const [hasStarted, setHasStarted] = useState(false);
-  const videoRef = useRef<HTMLVideoElement>(null);
-
-  // Core hooks
-  const { tracks, isLoading: tracksLoading } = useTrackLibrary();
-  const { mood, energy, crowdSize } = useMoodAnalysis();
+  const [showOverlays, setShowOverlays] = useState(true);
+  const [videoElement, setVideoElement] = useState<HTMLVideoElement | null>(null);
+  const [hasSessionStarted, setHasSessionStarted] = useState(false);
+  const [showEventSetup, setShowEventSetup] = useState(false);
+  const [eventId] = useState(() => `event-${Date.now()}`);
+  
+  // Simple state for crowd analysis (no complex mood tracking)
+  const [crowdSize, setCrowdSize] = useState(0);
+  const [currentMood] = useState('energetic'); // Fixed mood for event hosting
+  
   const {
     isPlaying,
     currentTime,
@@ -24,344 +74,609 @@ function App() {
     loadTrack,
     togglePlay,
     seek,
-    setVolume
+    setVolume,
+    audioElement,
+    duckAudio,
+    unduckAudio,
+    isDucked
   } = useAudioPlayer();
 
-  const handleStartSession = () => {
-    setHasStarted(true);
-    if (tracks.length > 0 && !currentTrack) {
-      loadTrack(tracks[0]);
+  const triggerAnnouncement = (message: string) => {
+    console.log('🎤 Triggering announcement:', message);
+    duckAudio(); // Duck audio before announcement
+    
+    // Set up global function for voice announcements component
+    (window as any).triggerPersonAnnouncement = (personName: string, customMessage?: string) => {
+      const announcement = customMessage || `Welcome ${personName}! Great to see you here!`;
+      console.log('🎤 Person announcement triggered:', announcement);
+      
+      // This will be handled by the VoiceAnnouncements component
+      const event = new CustomEvent('personAnnouncement', {
+        detail: { personName, message: announcement }
+      });
+      window.dispatchEvent(event);
+    };
+    
+    // Trigger immediate announcement
+    const event = new CustomEvent('immediateAnnouncement', {
+      detail: { message }
+    });
+    window.dispatchEvent(event);
+  };
+
+  const {
+    eventDetails,
+    isActive: isEventActive,
+    eventStarted,
+    currentPhase,
+    recognizedVIPs,
+    initializeEvent,
+    startEvent,
+    stopEvent,
+    handleVIPRecognized,
+    getEventStatus,
+    getUpcomingMoments,
+    triggeredMoments
+  } = useSmartEventDJ({
+    tracks: trackLibrary,
+    currentMood: currentMood,
+    energy: 75,
+    crowdSize,
+    onTrackChange: loadTrack,
+    onAnnouncement: triggerAnnouncement,
+    isPlaying,
+    currentTrack
+  });
+  // AWS Face Recognition - Must be declared before OpenAI host
+  const awsFaceRecognition = useServerSideAWSFaceRecognition({
+    videoElement,
+    vipPeople: eventSetup?.vipPeople || [],
+    eventId,
+    enabled: isEventActive && eventSetup !== null,
+    onVIPRecognized: handleVIPRecognized
+  });
+
+  // Simple crowd analysis without complex mood tracking
+  const mood = currentMood;
+  const energy = 75; // Fixed energy level for event hosting
+  const confidence = 85; // Fixed confidence
+
+
+  // Simple state for announcements
+  const [isAnnouncing, setIsAnnouncing] = useState(false);
+
+  // Continuous AI Video Agent (Like ChatGPT Video Mode)
+  const aiAgent = useContinuousAIAgent({
+    videoElement,
+    eventContext: eventSetup ? {
+      eventName: eventSetup.eventName,
+      eventType: eventSetup.eventType,
+      duration: eventSetup.duration,
+      aiPersonality: eventSetup.aiPersonality,
+      vipPeople: eventSetup.vipPeople.map(vip => ({
+        ...vip,
+        recognitionCount: 0
+      })),
+      startTime: new Date()
+    } : {
+      eventName: 'DJ Session',
+      eventType: 'party',
+      duration: 4,
+      aiPersonality: 'energetic',
+      vipPeople: [],
+      startTime: new Date()
+    },
+    tracks: trackLibrary,
+    currentTrack,
+    isPlaying,
+    onAnnouncement: triggerAnnouncement,
+    onTrackChange: loadTrack,
+    enabled: eventSetup !== null
+  });
+
+  // Smart Event Emcee (new enhanced system)
+  const smartEmcee = useSmartEventEmcee({
+    tracks: trackLibrary,
+    videoElement,
+    eventSetup: eventSetup || {
+      eventName: 'DJ Session',
+      eventType: 'party',
+      duration: 4,
+      vipPeople: [],
+      aiPersonality: 'energetic',
+      specialMoments: []
+    },
+    onTrackChange: loadTrack,
+    onAnnouncement: triggerAnnouncement,
+    isPlaying,
+    currentTrack
+  });
+
+  const handleAddToLibrary = (track: Track) => {
+    addToLibrary(track);
+  };
+
+  const handleStartSession = async () => {
+    console.log('🎵 Starting DJ session...');
+    
+    // Mark session as started immediately
+    setHasSessionStarted(true);
+    
+    // Start smart emcee if event is configured
+    if (eventSetup) {
+      smartEmcee.startEvent();
+      aiAgent.startAgent(); // Start the continuous AI video agent
+      setIsAnnouncing(true);
     }
+    
+    // Announce session start
+    const startAnnouncements = [
+      "Welcome to DJ Tillu! Let's get this party started!",
+      "DJ Tillu is in the house! Time to feel the beat!",
+      "Your AI DJ is ready to rock! Let's make some noise!",
+      "Session starting now! Get ready for an incredible musical journey!",
+      "DJ Tillu taking control! Let's turn up the energy!"
+    ];
+    
+    const announcement = startAnnouncements[Math.floor(Math.random() * startAnnouncements.length)];
+    triggerAnnouncement(announcement);
+    
+    // Wait for announcement, then load and play music
+    setTimeout(() => {
+      if (!currentTrack && trackLibrary.length > 0) {
+        const firstTrack = trackLibrary[0];
+        console.log('🎵 Loading first track:', firstTrack.title);
+        loadTrack(firstTrack);
+        
+        // Force play after track loads
+        setTimeout(() => {
+          console.log('🎵 Force starting playback...');
+          if (!isPlaying) {
+            togglePlay();
+          }
+        }, 2000);
+      } else if (currentTrack && !isPlaying) {
+        setTimeout(() => {
+          togglePlay();
+        }, 1000);
+        console.log('🎵 Track already loaded, starting playback...');
+      }
+    }, 3000); // Wait for announcement
+  };
+  useEffect(() => {
+    document.title = 'DJ Tillu - Live AI DJ Experience';
+  }, []);
+
+  // Update crowd size from AWS face recognition
+  useEffect(() => {
+    setCrowdSize(awsFaceRecognition.crowdAnalysis.faceCount);
+  }, [awsFaceRecognition.crowdAnalysis.faceCount]);
+
+  // Handle event setup completion
+  const handleSetupComplete = (setup: EventSetup) => {
+    setEventSetup(setup);
+    setShowSetup(false);
+    console.log('🎪 Event setup completed:', setup);
   };
 
-  const handleTrackSelect = (track: Track) => {
-    loadTrack(track);
+  const handleSkipSetup = () => {
+    setShowSetup(false);
+    console.log('🎪 Event setup skipped');
   };
 
-  const formatTime = (seconds: number) => {
-    const mins = Math.floor(seconds / 60);
-    const secs = Math.floor(seconds % 60);
-    return `${mins}:${secs.toString().padStart(2, '0')}`;
-  };
-
-  const progress = duration > 0 ? (currentTime / duration) * 100 : 0;
+  // Show setup wizard first
+  if (showSetup) {
+    return (
+      <EventSetupWizard
+        onSetupComplete={handleSetupComplete}
+        onSkip={handleSkipSetup}
+      />
+    );
+  }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-purple-900 via-black to-pink-900 relative overflow-hidden">
-      {/* Animated Background */}
-      <div className="absolute inset-0 overflow-hidden pointer-events-none">
-        <div className={`absolute inset-0 bg-gradient-to-br from-purple-500/20 via-pink-500/20 to-blue-500/20 transition-all duration-2000 ${
-          isPlaying ? 'animate-pulse' : ''
-        }`} />
-        
-        {isPlaying && (
-          <>
-            {[...Array(20)].map((_, i) => (
-              <div
-                key={i}
-                className="absolute w-2 h-2 bg-purple-400 rounded-full opacity-30"
-                style={{
-                  left: `${Math.random() * 100}%`,
-                  top: `${Math.random() * 100}%`,
-                  animation: `float 3s ease-in-out infinite ${Math.random() * 2}s`,
-                  animationDirection: Math.random() > 0.5 ? 'normal' : 'reverse'
-                }}
-              />
-            ))}
-          </>
-        )}
+    <div className="h-screen w-screen overflow-hidden relative bg-black">
+      {/* Fullscreen Video Background */}
+      <div className="absolute inset-0 z-0">
+        <FullscreenVideoBackground onVideoReady={setVideoElement} />
       </div>
-
-      {/* Hidden video for future AI features */}
-      <video
-        ref={videoRef}
-        autoPlay
-        muted
-        playsInline
-        className="hidden"
-      />
-
-      {/* Main Content */}
-      <div className="relative z-10 flex flex-col items-center justify-center min-h-screen p-6">
-        {/* Header */}
-        <div className="text-center mb-12">
-          <div className="w-24 h-24 bg-gradient-to-r from-pink-500 to-purple-600 rounded-full flex items-center justify-center mx-auto mb-6 shadow-2xl">
-            <Volume2 className="w-12 h-12 text-white" />
+      
+      {/* Overlay Content */}
+      <div className={`absolute inset-0 z-10 transition-opacity duration-500 ${showOverlays ? 'opacity-100' : 'opacity-30'}`}>
+        {/* Top Bar - Minimal Branding */}
+        <div className="absolute top-4 left-4 right-4 flex justify-between items-center z-50">
+          <div className="flex items-center space-x-3">
+            <div className="w-10 h-10 bg-gradient-to-r from-purple-500 to-pink-500 rounded-full flex items-center justify-center backdrop-blur-md">
+              <span className="text-lg font-bold text-white">DJ</span>
+            </div>
+            <div className="text-white">
+              {eventSetup ? (
+                <>
+                  <h1 className="text-xl font-bold bg-gradient-to-r from-purple-400 to-pink-400 bg-clip-text text-transparent">
+                    {eventSetup.eventName}
+                  </h1>
+                  <p className="text-xs text-gray-300 opacity-80">Smart AI Emcee • {eventSetup.eventType}</p>
+                </>
+              ) : (
+                <>
+                  <h1 className="text-xl font-bold bg-gradient-to-r from-purple-400 to-pink-400 bg-clip-text text-transparent">
+                    DJ Tillu
+                  </h1>
+                  <p className="text-xs text-gray-300 opacity-80">AI Live Session</p>
+                </>
+              )}
+            </div>
           </div>
-          <h1 className="text-6xl font-bold text-white mb-4 bg-gradient-to-r from-pink-400 to-purple-400 bg-clip-text text-transparent">
-            DJ Tillu
-          </h1>
-          <p className="text-xl text-purple-200 mb-2">AI-Powered DJ Experience</p>
-          <p className="text-gray-300">
-            {hasStarted ? 'Your AI DJ is ready to rock!' : 'Click the button below to start your session'}
-          </p>
+          
+          {/* Live Indicator */}
+          <div className="flex items-center space-x-2 bg-black/30 backdrop-blur-md rounded-full px-4 py-2 border border-red-500/30">
+            <div className="w-2 h-2 bg-red-500 rounded-full animate-pulse"></div>
+            <span className="text-red-400 text-sm font-medium">LIVE</span>
+          </div>
         </div>
 
-        {/* Current Track Display */}
-        {currentTrack && (
-          <div className="bg-black/20 backdrop-blur-xl rounded-2xl border border-white/10 p-8 mb-8 max-w-md w-full shadow-2xl">
-            <div className="text-center">
-              {currentTrack.albumArt && (
-                <div className="w-32 h-32 mx-auto mb-6 rounded-xl overflow-hidden border-2 border-white/30 shadow-xl">
-                  <img 
-                    src={currentTrack.albumArt} 
-                    alt={currentTrack.title}
-                    className="w-full h-full object-cover"
-                  />
+        {/* Left Panel - Track Library */}
+        <DraggablePanel
+          title="Track Library"
+          initialPosition={{ x: 20, y: 100 }}
+          initialSize={{ width: 320, height: 400 }}
+          className="z-40"
+          accentColor="purple"
+        >
+            <TrackList
+              tracks={trackLibrary}
+              currentTrack={currentTrack}
+              isPlaying={isPlaying}
+              onTrackSelect={loadTrack}
+              onPlayToggle={togglePlay}
+            />
+        </DraggablePanel>
+
+
+        {/* Right Panel - Crowd Analytics */}
+        <DraggablePanel
+          title="Event Dashboard"
+          initialPosition={{ x: window.innerWidth - 340, y: 400 }}
+          initialSize={{ width: 320, height: 280 }}
+          className="z-40"
+          accentColor="blue"
+        >
+          <SmartEventDashboard
+            eventDetails={eventDetails}
+            isActive={isEventActive}
+            eventStarted={eventStarted}
+            currentPhase={currentPhase}
+            recognizedVIPs={recognizedVIPs}
+            eventStatus={getEventStatus()}
+            upcomingMoments={getUpcomingMoments()}
+            triggeredMoments={triggeredMoments}
+            onStartEvent={startEvent}
+            onStopEvent={stopEvent}
+          />
+        </DraggablePanel>
+
+        {/* Face Recognition - Left side under Track Library */}
+        <DraggablePanel
+          title="🎥 AI Video Agent"
+          initialPosition={{ x: 20, y: 520 }}
+          initialSize={{ width: 320, height: 280 }}
+          className="z-40"
+          accentColor="blue"
+        >
+          <ContinuousAIAgentPanel
+            isActive={aiAgent.isActive}
+            onStartAgent={aiAgent.startAgent}
+            onStopAgent={aiAgent.stopAgent}
+            isAnalyzing={aiAgent.isAnalyzing}
+            lastResponse={aiAgent.lastResponse}
+            responseHistory={aiAgent.responseHistory}
+            agentStatus={aiAgent.agentStatus}
+            error={aiAgent.error}
+            onForceAnalysis={aiAgent.forceAnalysis}
+            conversationHistory={aiAgent.conversationHistory}
+            eventContext={eventSetup}
+          />
+        </DraggablePanel>
+
+        {/* Event Status - Top right */}
+        <DraggablePanel
+          title="Face Recognition"
+          initialPosition={{ x: window.innerWidth - 340, y: 100 }}
+          initialSize={{ width: 320, height: 200 }}
+          className="z-40"
+          accentColor="green"
+        >
+          <ServerSideAWSPanel
+            isInitialized={awsFaceRecognition.isInitialized}
+            isAnalyzing={awsFaceRecognition.isAnalyzing}
+            recognizedPeople={awsFaceRecognition.recognizedPeople}
+            lastAnalysis={awsFaceRecognition.lastAnalysis}
+            error={awsFaceRecognition.error}
+            crowdAnalysis={awsFaceRecognition.crowdAnalysis}
+            vipPeople={eventSetup?.vipPeople || []}
+            enabled={isEventActive && eventSetup !== null}
+          />
+        </DraggablePanel>
+
+        {/* Voice Announcements - Bottom right */}
+        <DraggablePanel
+          title="Voice Announcements"
+          initialPosition={{ x: window.innerWidth - 340, y: 700 }}
+          initialSize={{ width: 320, height: 200 }}
+          className="z-40"
+          accentColor="yellow"
+        >
+          <VoiceAnnouncements 
+            mood={mood} 
+            energy={energy} 
+            crowdSize={crowdSize}
+            currentTrack={currentTrack?.title || 'No track'}
+            onAnnouncementStart={duckAudio}
+            onAnnouncementEnd={unduckAudio}
+          />
+        </DraggablePanel>
+
+        {/* Center - Now Playing (when track is selected and AI not active) */}
+        {currentTrack && !aiAgent.isActive && (
+          <DraggablePanel
+            title="Now Playing"
+            initialPosition={{ x: window.innerWidth / 2 - 200, y: window.innerHeight / 2 - 150 }}
+            initialSize={{ width: 400, height: 450 }}
+            className="z-50"
+            accentColor="pink"
+          >
+            {currentTrack ? (
+              <NowPlaying
+                currentTrack={currentTrack}
+                isPlaying={isPlaying}
+                currentTime={currentTime}
+                duration={duration}
+                volume={volume}
+                isLoading={isLoading}
+                onPlayToggle={togglePlay}
+                onSeek={seek}
+                onVolumeChange={setVolume}
+                error={error}
+              />
+            ) : (
+              <div className="text-center py-8">
+                <div className="w-16 h-16 border-4 border-purple-400 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
+                <h3 className="text-lg font-semibold text-white mb-2">DJ Tillu Starting...</h3>
+                <p className="text-gray-300">Loading your music experience</p>
+                {isTransitioning && (
+                  <div className="mt-4">
+                    <div className="w-full bg-gray-700 rounded-full h-2 mb-2">
+                      <div 
+                        className="bg-purple-500 h-2 rounded-full transition-all duration-500"
+                        style={{ width: `${transitionProgress}%` }}
+                      />
+                    </div>
+                    <p className="text-purple-300 text-sm">Transitioning tracks...</p>
+                  </div>
+                )}
+              </div>
+            )}
+          </DraggablePanel>
+        )}
+
+        {/* OpenAI Event Host Panel (when active) */}
+        {aiAgent.isActive && (
+          <DraggablePanel
+            title="🎥 AI Video Agent Active"
+            initialPosition={{ x: window.innerWidth / 2 - 200, y: window.innerHeight / 2 - 150 }}
+            initialSize={{ width: 400, height: 350 }}
+            className="z-50"
+            accentColor="blue"
+          >
+            <div className="text-center space-y-4">
+              <div className="w-16 h-16 bg-gradient-to-r from-blue-500 to-purple-500 rounded-full flex items-center justify-center mx-auto">
+                <span className="text-2xl">🎥</span>
+              </div>
+              
+              <div>
+                <h3 className="text-xl font-bold text-white mb-2">AI Video Agent</h3>
+                <p className="text-gray-300 text-sm">{eventSetup?.eventName}</p>
+              </div>
+              
+              <div className="bg-white/10 rounded-lg p-4">
+                <div className="grid grid-cols-3 gap-4 text-center text-sm">
+                  <div>
+                    <div className="text-blue-300 font-bold text-lg">{aiAgent.conversationHistory.length}</div>
+                    <div className="text-gray-400">Interactions</div>
+                  </div>
+                  <div>
+                    <div className="text-green-300 font-bold text-lg">{crowdSize}</div>
+                    <div className="text-gray-400">People Present</div>
+                  </div>
+                  <div>
+                    <div className="text-purple-300 font-bold text-lg">{aiAgent.responseHistory.length}</div>
+                    <div className="text-gray-400">Responses</div>
+                  </div>
+                </div>
+              </div>
+              
+              <div className={`rounded-lg p-3 ${
+                aiAgent.isAnalyzing ? 'bg-yellow-600/20' : 'bg-blue-600/20'
+              }`}>
+                <div className="flex items-center justify-center space-x-2 mb-2">
+                  <div className={`w-2 h-2 rounded-full animate-pulse ${
+                    aiAgent.isAnalyzing ? 'bg-yellow-400' : 'bg-blue-400'
+                  }`}></div>
+                  <span className={`font-medium text-sm ${
+                    aiAgent.isAnalyzing ? 'text-yellow-300' : 'text-blue-300'
+                  }`}>
+                    {aiAgent.isAnalyzing ? 'AI Watching & Thinking...' : 'AI Video Agent Active'}
+                  </span>
+                </div>
+                {aiAgent.lastResponse && (
+                  <p className="text-xs text-gray-400 mt-1">
+                    Last Response: {aiAgent.lastResponse.reasoning}
+                  </p>
+                )}
+              </div>
+              
+              {aiAgent.conversationHistory.length > 0 && (
+                <div className="bg-green-600/20 rounded-lg p-3">
+                  <h4 className="text-sm font-medium text-green-300 mb-2">Recent Interactions:</h4>
+                  <div className="space-y-1">
+                    {aiAgent.conversationHistory.slice(-3).map((interaction, index) => (
+                      <div key={index} className="text-xs">
+                        <span className="text-white">"{interaction.split(': ')[1]}"</span>
+                      </div>
+                    ))}
+                  </div>
                 </div>
               )}
-              <h3 className="text-xl font-bold text-white mb-2">{currentTrack.title}</h3>
-              <p className="text-gray-300 mb-4">{currentTrack.artist}</p>
-              <div className="flex justify-center space-x-4 text-sm text-gray-400 mb-6">
-                <span>{currentTrack.genre}</span>
-                <span>•</span>
-                <span>{currentTrack.bpm} BPM</span>
-              </div>
-
-              {/* Progress Bar */}
-              <div className="mb-6">
-                <div className="flex justify-between text-sm text-gray-300 mb-2">
-                  <span>{formatTime(currentTime)}</span>
-                  <span>{formatTime(duration)}</span>
-                </div>
-                <div 
-                  className="w-full h-2 bg-gray-700 rounded-full cursor-pointer"
-                  onClick={(e) => {
-                    const rect = e.currentTarget.getBoundingClientRect();
-                    const x = e.clientX - rect.left;
-                    const percentage = x / rect.width;
-                    seek(percentage * duration);
-                  }}
-                >
-                  <div 
-                    className="h-2 bg-gradient-to-r from-purple-400 to-pink-400 rounded-full transition-all duration-100 shadow-lg"
-                    style={{ width: `${progress}%` }}
-                  />
-                </div>
-              </div>
-
-              {/* Volume Control */}
-              <div className="flex items-center space-x-3">
-                <Volume2 className="w-4 h-4 text-gray-300" />
-                <input
-                  type="range"
-                  min="0"
-                  max="100"
-                  value={volume}
-                  onChange={(e) => setVolume(Number(e.target.value))}
-                  className="flex-1 h-1 bg-white/20 rounded-lg appearance-none cursor-pointer"
-                  style={{
-                    background: `linear-gradient(to right, #a855f7 0%, #a855f7 ${volume}%, rgba(255,255,255,0.2) ${volume}%, rgba(255,255,255,0.2) 100%)`
-                  }}
-                />
-                <span className="text-sm text-gray-300 w-12">{volume}%</span>
-              </div>
             </div>
-          </div>
+          </DraggablePanel>
         )}
+        {/* Floating Controls */}
+        <FloatingControls
+          isPlaying={isPlaying}
+          onPlayToggle={togglePlay}
+          onSettingsToggle={() => setShowSettings(!showSettings)}
+          onStartSession={handleStartSession}
+          hasStarted={hasSessionStarted}
+        />
 
-        {/* Main Play Button */}
-        <div className="mb-8">
-          <button
-            onClick={hasStarted ? togglePlay : handleStartSession}
-            disabled={isLoading}
-            className={`w-24 h-24 rounded-full flex items-center justify-center transition-all duration-300 shadow-2xl ${
-              hasStarted && isPlaying
-                ? 'bg-gradient-to-r from-pink-500 to-purple-500 shadow-purple-500/50 scale-110'
-                : !hasStarted
-                ? 'bg-gradient-to-r from-green-500 to-blue-500 shadow-green-500/50 hover:scale-105 animate-pulse'
-                : 'bg-black/40 backdrop-blur-xl border border-white/30 hover:scale-105'
-            } ${isLoading ? 'opacity-50 cursor-not-allowed' : ''}`}
-            title={!hasStarted ? 'Start DJ Tillu Session' : isPlaying ? 'Pause' : 'Play'}
-          >
-            {isLoading ? (
-              <div className="w-8 h-8 border-2 border-white border-t-transparent rounded-full animate-spin" />
-            ) : !hasStarted ? (
-              <Play className="w-10 h-10 text-white ml-1" />
-            ) : isPlaying ? (
-              <Pause className="w-10 h-10 text-white" />
-            ) : (
-              <Play className="w-10 h-10 text-white ml-1" />
-            )}
-          </button>
-        </div>
-
-        {/* Error Display */}
-        {error && (
-          <div className="bg-red-500/20 border border-red-500/40 rounded-lg p-4 mb-6 max-w-md">
-            <p className="text-red-300 text-sm text-center">{error}</p>
-          </div>
-        )}
-
-        {/* Track Library */}
-        {hasStarted && (
-          <div className="bg-black/20 backdrop-blur-xl rounded-2xl border border-white/10 p-6 max-w-2xl w-full shadow-2xl">
-            <h2 className="text-xl font-bold text-white mb-4 flex items-center">
-              <Music className="w-5 h-5 mr-2" />
-              Track Library
-            </h2>
+        {/* Settings Panel (when open) */}
+        {showSettings && (
+          <div className="absolute inset-4 z-60 bg-black/40 backdrop-blur-xl rounded-3xl border border-white/20 p-6 shadow-2xl">
+            <div className="flex justify-between items-center mb-6">
+              <h2 className="text-2xl font-bold text-white">Settings</h2>
+              <button
+                onClick={() => setShowSettings(false)}
+                className="w-8 h-8 bg-white/20 rounded-full flex items-center justify-center text-white hover:bg-white/30 transition-colors"
+              >
+                ×
+              </button>
+            </div>
             
-            {tracksLoading ? (
-              <div className="text-center py-8">
-                <div className="w-8 h-8 border-2 border-purple-400 border-t-transparent rounded-full animate-spin mx-auto mb-2" />
-                <p className="text-gray-300">Loading tracks from Audius...</p>
-              </div>
-            ) : tracks.length > 0 ? (
-              <div className="space-y-2 max-h-64 overflow-y-auto">
-                {tracks.map((track) => (
-                  <div
-                    key={track.id}
-                    className={`p-3 rounded-lg border transition-all cursor-pointer ${
-                      currentTrack?.id === track.id
-                        ? 'bg-purple-600/30 border-purple-500/60 backdrop-blur-sm'
-                        : 'bg-white/10 border-white/20 hover:bg-white/20 backdrop-blur-sm'
-                    }`}
-                    onClick={() => handleTrackSelect(track)}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 h-full">
+              <div>
+                <h3 className="text-lg font-semibold text-white mb-4">Event Setup</h3>
+                <div className="space-y-4">
+                  <button
+                    onClick={() => setShowEventSetup(!showEventSetup)}
+                    className="w-full px-4 py-2 bg-purple-600 hover:bg-purple-700 rounded-lg transition-colors"
                   >
-                    <div className="flex items-center space-x-3">
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          if (currentTrack?.id === track.id) {
-                            togglePlay();
-                          } else {
-                            handleTrackSelect(track);
-                          }
-                        }}
-                        className={`w-8 h-8 rounded-full flex items-center justify-center transition-colors ${
-                          currentTrack?.id === track.id && isPlaying
-                            ? 'bg-purple-500 text-white shadow-lg'
-                            : 'bg-white/20 text-white hover:bg-purple-600'
-                        }`}
-                      >
-                        {currentTrack?.id === track.id && isPlaying ? (
-                          <Pause className="w-4 h-4" />
-                        ) : (
-                          <Play className="w-4 h-4 ml-0.5" />
-                        )}
-                      </button>
-
-                      <div className="flex-1 min-w-0">
-                        <p className="font-medium text-white truncate">{track.title}</p>
-                        <div className="flex items-center space-x-2 text-xs">
-                          <span className="text-gray-300">{track.artist}</span>
-                          <span className="text-purple-300">{track.bpm} BPM</span>
-                          <span className="text-gray-400">{formatTime(track.duration)}</span>
-                        </div>
-                      </div>
+                    {showEventSetup ? 'Hide Event Setup' : 'Configure Smart Event'}
+                  </button>
+                  
+                  {showEventSetup && (
+                    <div className="max-h-96 overflow-y-auto">
+                      <EventDetailsManager onEventSaved={initializeEvent} />
                     </div>
-
-                    <div className="mt-2 flex items-center justify-between">
-                      <span className="px-2 py-1 bg-purple-500/30 text-purple-200 rounded text-xs">
-                        {track.genre}
-                      </span>
-                      {currentTrack?.id === track.id && (
-                        <span className="text-purple-300 font-medium text-xs flex items-center">
-                          <div className="w-2 h-2 bg-purple-400 rounded-full mr-1 animate-pulse"></div>
-                          Playing
-                        </span>
-                      )}
-                    </div>
+                  )}
+                  
+                  <div>
+                    <label className="block text-sm text-gray-300 mb-2">Master Volume</label>
+                    <input
+                      type="range"
+                      min="0"
+                      max="100"
+                      value={volume}
+                      onChange={(e) => setVolume(Number(e.target.value))}
+                      className="w-full"
+                    />
                   </div>
-                ))}
+                </div>
               </div>
-            ) : (
-              <div className="text-center py-8">
-                <Music className="w-12 h-12 text-gray-500 mx-auto mb-3" />
-                <p className="text-gray-300 mb-2">No tracks available</p>
-                <p className="text-gray-400 text-sm">Loading music library...</p>
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* Mood Display */}
-        {hasStarted && (
-          <div className="mt-6 bg-black/20 backdrop-blur-xl rounded-xl border border-white/10 p-4 max-w-md w-full">
-            <h3 className="text-lg font-bold text-white mb-3 text-center">Current Vibe</h3>
-            <div className="grid grid-cols-3 gap-4 text-center">
+              
               <div>
-                <p className="text-xs text-gray-300">Mood</p>
-                <p className="text-sm font-bold text-purple-300">{mood}</p>
-              </div>
-              <div>
-                <p className="text-xs text-gray-300">Energy</p>
-                <div className="w-full bg-white/20 rounded-full h-2 mb-1">
-                  <div 
-                    className="h-2 bg-gradient-to-r from-yellow-400 to-red-400 rounded-full transition-all duration-500"
-                    style={{ width: `${energy}%` }}
+                <h3 className="text-lg font-semibold text-white mb-4">Music Browser</h3>
+                
+                <div className="mb-6">
+                  <h4 className="text-md font-semibold text-white mb-4">Mood Playlists</h4>
+                  <MoodPlaylistManager
+                    tracks={trackLibrary}
+                    onPlayTrack={loadTrack}
                   />
                 </div>
-                <p className="text-xs text-yellow-300 font-bold">{energy}%</p>
+                
+                <AudiusBrowser 
+                  onTrackSelect={loadTrack}
+                  onAddToLibrary={handleAddToLibrary}
+                  currentMood={mood}
+                />
+                
+                <div className="mt-6">
+                  <h3 className="text-lg font-semibold text-white mb-4">WhooshMusic Moods</h3>
+                  <WhooshMoodBrowser
+                    onTrackSelect={loadTrack}
+                    onAddToLibrary={handleAddToLibrary}
+                    currentMood={mood}
+                  />
+                </div>
+                
+                <div className="mt-6">
+                  <h3 className="text-lg font-semibold text-white mb-4">Upload Music</h3>
+                  <SupabaseTrackManager
+                    onTrackSelect={loadTrack}
+                    onAddToLibrary={handleAddToLibrary}
+                  />
+                </div>
               </div>
-              <div>
-                <p className="text-xs text-gray-300">Crowd</p>
-                <p className="text-sm font-bold text-green-300">{crowdSize}</p>
+            </div>
+          </div>
+        )}
+
+
+        {/* AI Status Indicator */}
+        {(aiAgent.isActive || isEventActive) && (
+          <div className="absolute top-1/2 left-8 transform -translate-y-1/2 z-50">
+            <div className={`px-4 py-2 rounded-full backdrop-blur-xl shadow-2xl border transition-all ${
+              aiAgent.isActive
+                ? 'bg-blue-500/30 border-blue-500/50'
+                : isEventActive
+                ? 'bg-purple-500/30 border-purple-500/50'
+                : 'bg-green-500/30 border-green-500/50'
+            }`}>
+              <div className="flex items-center space-x-2">
+                <div className={`w-2 h-2 rounded-full animate-pulse ${
+                  aiAgent.isActive ? 'bg-blue-400' :
+                  isEventActive ? 'bg-purple-400' : 'bg-green-400'
+                }`}></div>
+                <span className={`font-semibold text-sm ${
+                  aiAgent.isActive ? 'text-blue-300' :
+                  isEventActive ? 'text-purple-300' : 'text-green-300'
+                }`}>
+                  {aiAgent.isActive ? 'AI VIDEO AGENT ACTIVE' :
+                   isEventActive ? 'SMART EVENT ACTIVE' : 'AI DJ ACTIVE'}
+                </span>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* AI Video Agent Status */}
+        {aiAgent.isActive && (
+          <div className="absolute bottom-32 right-8 z-50">
+            <div className="px-4 py-2 rounded-full bg-blue-500/30 border border-blue-500/50 backdrop-blur-xl shadow-2xl">
+              <div className="flex items-center space-x-2">
+                <div className="w-2 h-2 bg-blue-400 rounded-full animate-pulse"></div>
+                <span className="text-blue-300 font-semibold text-sm">
+                  AI VIDEO AGENT • {aiAgent.conversationHistory.length} INTERACTIONS • {aiAgent.isAnalyzing ? 'WATCHING' : 'ACTIVE'}
+                </span>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Audio Ducking Indicator */}
+        {(isDucked || isAnnouncing) && (
+          <div className="absolute bottom-32 left-1/2 transform -translate-x-1/2 z-50">
+            <div className="px-4 py-2 rounded-full bg-yellow-500/30 border border-yellow-500/50 backdrop-blur-xl shadow-2xl">
+              <div className="flex items-center space-x-2">
+                <div className="w-2 h-2 bg-yellow-400 rounded-full animate-pulse"></div>
+                <span className="text-yellow-300 font-semibold text-sm">
+                  ANNOUNCEMENT
+                </span>
               </div>
             </div>
           </div>
         )}
       </div>
-
-      {/* Settings Button */}
-      <div className="absolute top-6 right-6 z-50">
-        <button
-          onClick={() => setShowSettings(!showSettings)}
-          className="w-12 h-12 bg-black/30 backdrop-blur-md rounded-full flex items-center justify-center text-white hover:bg-black/50 transition-colors border border-white/20"
-          title="Settings"
-        >
-          <Settings className="w-5 h-5" />
-        </button>
-      </div>
-
-      {/* Settings Panel */}
-      {showSettings && (
-        <div className="absolute top-20 right-6 z-50 bg-black/80 backdrop-blur-xl rounded-xl border border-white/20 p-6 max-w-sm shadow-2xl">
-          <h3 className="text-lg font-bold text-white mb-4">DJ Tillu Settings</h3>
-          
-          <div className="space-y-4">
-            <div>
-              <h4 className="text-sm font-medium text-gray-300 mb-2">System Status</h4>
-              <div className="space-y-1 text-xs">
-                <div className="flex justify-between">
-                  <span className="text-gray-400">Tracks Loaded:</span>
-                  <span className="text-white">{tracks.length}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-gray-400">Current Mood:</span>
-                  <span className="text-purple-300">{mood}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-gray-400">Session:</span>
-                  <span className="text-green-300">{hasStarted ? 'Active' : 'Not Started'}</span>
-                </div>
-              </div>
-            </div>
-
-            <div>
-              <h4 className="text-sm font-medium text-gray-300 mb-2">Features</h4>
-              <div className="space-y-2 text-xs text-gray-400">
-                <div>✅ Audius Music Integration</div>
-                <div>✅ AI Mood Analysis</div>
-                <div>✅ Real-time Audio Player</div>
-                <div>🔄 Voice Announcements (Coming Soon)</div>
-                <div>🔄 Face Recognition (Coming Soon)</div>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      <style jsx>{`
-        @keyframes float {
-          0%, 100% {
-            transform: translateY(0) rotate(0deg);
-          }
-          50% {
-            transform: translateY(-20px) rotate(180deg);
-          }
-        }
-      `}</style>
     </div>
   );
 }

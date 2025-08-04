@@ -1,238 +1,221 @@
 import { useState, useEffect, useRef } from 'react';
+import { ContinuousAIVideoAgent } from '../utils/continuousAIAgent';
+import { Track } from '../data/tracks';
 
 interface VIPPerson {
   id: string;
   name: string;
   role: string;
-  photoUrl?: string;
-  customGreeting?: string;
+  imageFile?: File;
+  imageUrl?: string;
+  greeting?: string;
+  recognitionCount: number;
+  lastSeen?: Date;
 }
 
-interface EventDetails {
-  name: string;
-  type: string;
+interface EventContext {
+  eventName: string;
+  eventType: 'birthday' | 'corporate' | 'wedding' | 'party' | 'conference';
   duration: number;
-  aiPersonality: string;
-}
-
-interface RecognizedPerson {
-  name: string;
-  confidence: number;
-  timestamp: number;
+  aiPersonality: 'humorous' | 'formal' | 'energetic' | 'professional';
+  vipPeople: VIPPerson[];
+  startTime: Date;
 }
 
 interface UseContinuousAIAgentProps {
-  videoRef: React.RefObject<HTMLVideoElement>;
-  vipPeople: VIPPerson[];
-  eventDetails: EventDetails;
-  onAnnouncement: (text: string, priority: 'high' | 'medium' | 'low') => void;
+  videoElement: HTMLVideoElement | null;
+  eventContext: EventContext;
+  tracks: Track[];
+  currentTrack: Track | null;
+  isPlaying: boolean;
+  onAnnouncement: (message: string) => void;
+  onTrackChange: (track: Track) => void;
   enabled: boolean;
 }
 
 export const useContinuousAIAgent = ({
-  videoRef,
-  vipPeople,
-  eventDetails,
+  videoElement,
+  eventContext,
+  tracks,
+  currentTrack,
+  isPlaying,
   onAnnouncement,
+  onTrackChange,
   enabled
 }: UseContinuousAIAgentProps) => {
-  const [isRunning, setIsRunning] = useState(false);
-  const [lastActivity, setLastActivity] = useState<string>('');
-  const [recognizedPeople, setRecognizedPeople] = useState<RecognizedPerson[]>([]);
-  const [agentStatus, setAgentStatus] = useState<'idle' | 'active' | 'analyzing'>('idle');
-  const [stats, setStats] = useState({
-    totalAnnouncements: 0,
-    lastAnnouncementTime: null as string | null
-  });
+  const [isActive, setIsActive] = useState(false);
+  const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const [lastResponse, setLastResponse] = useState<any>(null);
+  const [responseHistory, setResponseHistory] = useState<any[]>([]);
+  const [agentStatus, setAgentStatus] = useState<any>({});
+  const [error, setError] = useState<string | null>(null);
 
-  const analysisIntervalRef = useRef<NodeJS.Timeout>();
-  const lastAnalysisTime = useRef<number>(0);
+  const agentRef = useRef<ContinuousAIVideoAgent | null>(null);
+  const intervalRef = useRef<NodeJS.Timeout>();
 
-  // Start the AI agent
+  // Initialize the AI agent
+  useEffect(() => {
+    const openAIKey = import.meta.env.VITE_OPENAI_API_KEY;
+    const geminiKey = import.meta.env.VITE_GEMINI_API_KEY;
+
+    if (!openAIKey || !geminiKey) {
+      setError('Missing API keys. Please add VITE_OPENAI_API_KEY and VITE_GEMINI_API_KEY to your .env file');
+      return;
+    }
+
+    agentRef.current = new ContinuousAIVideoAgent(openAIKey, geminiKey);
+    console.log('🤖 Continuous AI Agent initialized');
+  }, []);
+
+  // Start the agent
   const startAgent = () => {
-    if (!enabled) return;
+    if (!agentRef.current || !videoElement) {
+      setError('Agent not ready or video not available');
+      return;
+    }
+
+    agentRef.current.start(eventContext);
+    setIsActive(true);
+    setError(null);
     
-    setIsRunning(true);
-    setAgentStatus('active');
-    console.log('🤖 Continuous AI Agent started');
+    console.log('🎥 Starting continuous AI video agent...');
+    
+    // Welcome message
+    const welcomeMessage = `Hello everyone! I'm your AI host for ${eventContext.eventName}. I can see you through the camera and I'm here to make this ${eventContext.eventType} amazing!`;
+    setTimeout(() => {
+      onAnnouncement(welcomeMessage);
+    }, 2000);
   };
 
-  // Stop the AI agent
+  // Stop the agent
   const stopAgent = () => {
-    setIsRunning(false);
-    setAgentStatus('idle');
-    
-    if (analysisIntervalRef.current) {
-      clearInterval(analysisIntervalRef.current);
+    if (agentRef.current) {
+      agentRef.current.stop();
     }
-    
+    setIsActive(false);
+    if (intervalRef.current) {
+      clearInterval(intervalRef.current);
+    }
     console.log('🤖 Continuous AI Agent stopped');
-  };
-
-  // Analyze video frame with OpenAI
-  const analyzeVideoFrame = async (): Promise<void> => {
-    if (!videoRef.current || !isRunning) return;
-
-    const now = Date.now();
-    if (now - lastAnalysisTime.current < 5000) return; // Analyze every 5 seconds
-
-    lastAnalysisTime.current = now;
-    setAgentStatus('analyzing');
-
-    try {
-      // Capture frame from video
-      const canvas = document.createElement('canvas');
-      const ctx = canvas.getContext('2d');
-      if (!ctx) return;
-
-      const video = videoRef.current;
-      canvas.width = video.videoWidth;
-      canvas.height = video.videoHeight;
-      ctx.drawImage(video, 0, 0);
-      
-      const imageBase64 = canvas.toDataURL('image/jpeg', 0.8).split(',')[1];
-
-      // Create analysis prompt for OpenAI
-      const vipNames = vipPeople.map(p => `${p.name} (${p.role})`).join(', ');
-      
-      const analysisPrompt = `You are an AI event host watching a live video feed at "${eventDetails.name}" (${eventDetails.type}). 
-
-ANALYZE THIS SCENE:
-1. Count visible people
-2. Describe what's happening (talking, dancing, presenting, etc.)
-3. Look for these VIP people: ${vipNames || 'none specified'}
-4. Determine if you should make an announcement
-
-EVENT CONTEXT:
-- Event: ${eventDetails.name}
-- Type: ${eventDetails.type}
-- AI Personality: ${eventDetails.aiPersonality}
-- VIPs to recognize: ${vipNames}
-
-RESPOND IN THIS FORMAT:
-People: [number]
-Activity: [what people are doing]
-VIP_Spotted: [name if you see them, or "none"]
-Should_Announce: [yes/no]
-Announcement: [what to say, or "none"]
-Priority: [high/medium/low]
-
-Example: "People: 3, Activity: having conversation, VIP_Spotted: Sarah Johnson, Should_Announce: yes, Announcement: Welcome our amazing CEO Sarah! Great to see you here!, Priority: high"`;
-
-      // Call OpenAI Vision API
-      const response = await fetch('https://api.openai.com/v1/chat/completions', {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${import.meta.env.VITE_OPENAI_API_KEY}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          model: 'gpt-4o-mini',
-          messages: [
-            {
-              role: 'user',
-              content: [
-                {
-                  type: 'text',
-                  text: analysisPrompt
-                },
-                {
-                  type: 'image_url',
-                  image_url: {
-                    url: `data:image/jpeg;base64,${imageBase64}`
-                  }
-                }
-              ]
-            }
-          ],
-          max_tokens: 300,
-          temperature: 0.7
-        })
-      });
-
-      if (!response.ok) {
-        throw new Error(`OpenAI API error: ${response.status}`);
-      }
-
-      const data = await response.json();
-      const analysisResult = data.choices[0].message.content;
-
-      // Parse the analysis
-      const peopleMatch = analysisResult.match(/People:\s*(\d+)/i);
-      const activityMatch = analysisResult.match(/Activity:\s*([^\n,]+)/i);
-      const vipMatch = analysisResult.match(/VIP_Spotted:\s*([^\n,]+)/i);
-      const shouldAnnounceMatch = analysisResult.match(/Should_Announce:\s*(yes|no)/i);
-      const announcementMatch = analysisResult.match(/Announcement:\s*([^\n]+)/i);
-      const priorityMatch = analysisResult.match(/Priority:\s*(high|medium|low)/i);
-
-      const peopleCount = peopleMatch ? parseInt(peopleMatch[1]) : 0;
-      const activity = activityMatch?.[1]?.trim() || 'general activity';
-      const vipSpotted = vipMatch?.[1]?.trim();
-      const shouldAnnounce = shouldAnnounceMatch?.[1] === 'yes';
-      const announcement = announcementMatch?.[1]?.trim();
-      const priority = (priorityMatch?.[1] as 'high' | 'medium' | 'low') || 'medium';
-
-      setLastActivity(activity);
-
-      // Handle VIP recognition
-      if (vipSpotted && vipSpotted !== 'none') {
-        const recognizedPerson: RecognizedPerson = {
-          name: vipSpotted,
-          confidence: 85, // Simulated confidence
-          timestamp: now
-        };
-
-        setRecognizedPeople(prev => {
-          const existing = prev.find(p => p.name === vipSpotted);
-          if (!existing) {
-            return [...prev, recognizedPerson];
-          }
-          return prev;
-        });
-
-        console.log('🎯 VIP Recognized:', vipSpotted);
-      }
-
-      // Handle announcements
-      if (shouldAnnounce && announcement && announcement !== 'none') {
-        onAnnouncement(announcement, priority);
-        
-        setStats(prev => ({
-          totalAnnouncements: prev.totalAnnouncements + 1,
-          lastAnnouncementTime: new Date().toLocaleTimeString()
-        }));
-
-        console.log('🎤 AI Announcement:', announcement);
-      }
-
-      setAgentStatus('active');
-
-    } catch (error) {
-      console.error('🤖 AI Agent analysis error:', error);
-      setAgentStatus('active'); // Continue running despite errors
-    }
   };
 
   // Main analysis loop
   useEffect(() => {
-    if (!isRunning || !enabled) return;
+    if (!isActive || !enabled || !videoElement || !agentRef.current) {
+      return;
+    }
 
-    analysisIntervalRef.current = setInterval(analyzeVideoFrame, 2000);
+    const runContinuousAnalysis = async () => {
+      if (isAnalyzing) return;
 
-    return () => {
-      if (analysisIntervalRef.current) {
-        clearInterval(analysisIntervalRef.current);
+      setIsAnalyzing(true);
+      setError(null);
+
+      try {
+        const response = await agentRef.current!.analyzeVideoAndRespond(videoElement);
+        
+        if (response) {
+          setLastResponse(response);
+          setResponseHistory(prev => [...prev.slice(-9), response]);
+
+          // Execute AI decisions
+          if (response.shouldSpeak && response.message) {
+            console.log('🎤 AI Agent speaking:', response.message);
+            setTimeout(() => {
+              onAnnouncement(response.message!);
+            }, 500);
+          }
+
+          if (response.shouldChangeMusic && response.suggestedMusicStyle && tracks.length > 0) {
+            const suggestedTrack = findTrackByStyle(response.suggestedMusicStyle);
+            if (suggestedTrack && suggestedTrack.id !== currentTrack?.id) {
+              console.log('🎵 AI Agent changing music:', suggestedTrack.title);
+              setTimeout(() => {
+                onTrackChange(suggestedTrack);
+              }, 3000);
+            }
+          }
+
+          // Update status
+          setAgentStatus(agentRef.current!.getStatus());
+        }
+
+      } catch (error: any) {
+        console.error('🤖 Continuous AI analysis error:', error);
+        setError(error.message);
+      } finally {
+        setIsAnalyzing(false);
       }
     };
-  }, [isRunning, enabled, vipPeople, eventDetails]);
+
+    // Run analysis every 3-5 seconds (like ChatGPT video)
+    const randomInterval = 3000 + Math.random() * 2000;
+    intervalRef.current = setInterval(runContinuousAnalysis, randomInterval);
+
+    // Run initial analysis after 3 seconds
+    setTimeout(runContinuousAnalysis, 3000);
+
+    return () => {
+      if (intervalRef.current) {
+        clearInterval(intervalRef.current);
+      }
+    };
+  }, [isActive, enabled, videoElement, eventContext, tracks, currentTrack, isAnalyzing]);
+
+  // Find track by AI suggestion
+  const findTrackByStyle = (style: string): Track | null => {
+    const styleLower = style.toLowerCase();
+    
+    // Try to match by genre
+    let matchedTrack = tracks.find(track => 
+      track.genre.toLowerCase().includes(styleLower)
+    );
+
+    // Try to match by energy level
+    if (!matchedTrack) {
+      if (styleLower.includes('high energy') || styleLower.includes('upbeat')) {
+        matchedTrack = tracks.find(track => track.bpm > 130);
+      } else if (styleLower.includes('chill') || styleLower.includes('slow')) {
+        matchedTrack = tracks.find(track => track.bpm < 120);
+      }
+    }
+
+    // Random fallback
+    if (!matchedTrack && tracks.length > 0) {
+      matchedTrack = tracks[Math.floor(Math.random() * tracks.length)];
+    }
+
+    return matchedTrack || null;
+  };
+
+  // Force analysis (for testing)
+  const forceAnalysis = async () => {
+    if (!agentRef.current || !videoElement || isAnalyzing) return;
+
+    setIsAnalyzing(true);
+    try {
+      const response = await agentRef.current.forceAnalysis(videoElement);
+      if (response) {
+        setLastResponse(response);
+        console.log('🔍 Forced analysis result:', response);
+      }
+    } catch (error: any) {
+      setError(error.message);
+    } finally {
+      setIsAnalyzing(false);
+    }
+  };
 
   return {
+    isActive,
     startAgent,
     stopAgent,
-    isRunning,
-    lastActivity,
-    recognizedPeople,
+    isAnalyzing,
+    lastResponse,
+    responseHistory,
     agentStatus,
-    stats
+    error,
+    forceAnalysis,
+    conversationHistory: agentRef.current?.getConversationSummary() || []
   };
 };
