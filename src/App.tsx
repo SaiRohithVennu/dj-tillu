@@ -5,24 +5,18 @@ import { TrackList } from './components/TrackList';
 import { NowPlaying } from './components/NowPlaying';
 import { AudiusBrowser } from './components/AudiusBrowser';
 import { VideoAnalyzer } from './components/VideoAnalyzer';
-import { MoodDisplay } from './components/MoodDisplay';
 import { VoiceAnnouncements } from './components/VoiceAnnouncements';
 import { AudioVisualizer } from './components/AudioVisualizer';
 import { FloatingControls } from './components/FloatingControls';
 import { FullscreenVideoBackground } from './components/FullscreenVideoBackground';
-import { AIDJPanel } from './components/AIDJPanel';
-import { GeminiMoodDisplay } from './components/GeminiMoodDisplay';
 import { MoodPlaylistManager } from './components/MoodPlaylistManager';
 import { SupabaseTrackManager } from './components/SupabaseTrackManager';
 import { WhooshMoodBrowser } from './components/WhooshMoodBrowser';
 import { EventDetailsManager } from './components/EventDetailsManager';
-import { FaceRecognitionSystem } from './components/FaceRecognitionSystem';
 import { SmartEventDashboard } from './components/SmartEventDashboard';
 import { ServerSideAWSPanel } from './components/ServerSideAWSPanel';
 import { useServerSideAWSFaceRecognition } from './hooks/useServerSideAWSFaceRecognition';
 import { useAudioPlayer } from './hooks/useAudioPlayer';
-import { useGeminiMoodAnalysis } from './hooks/useGeminiMoodAnalysis';
-import { useAIMoodDJ } from './hooks/useAIMoodDJ';
 import { useSmartEventDJ } from './hooks/useSmartEventDJ';
 import { useSmartEventEmcee } from './hooks/useSmartEventEmcee';
 import { Track } from './data/tracks';
@@ -56,12 +50,15 @@ function App() {
   const [showSetup, setShowSetup] = useState(true);
   const [eventSetup, setEventSetup] = useState<EventSetup | null>(null);
   const [showSettings, setShowSettings] = useState(false);
-  const [moodOverride, setMoodOverride] = useState<'hype' | 'chill' | null>(null);
   const [showOverlays, setShowOverlays] = useState(true);
   const [videoElement, setVideoElement] = useState<HTMLVideoElement | null>(null);
   const [hasSessionStarted, setHasSessionStarted] = useState(false);
   const [showEventSetup, setShowEventSetup] = useState(false);
   const [eventId] = useState(() => `event-${Date.now()}`);
+  
+  // Simple state for crowd analysis (no complex mood tracking)
+  const [crowdSize, setCrowdSize] = useState(0);
+  const [currentMood] = useState('energetic'); // Fixed mood for event hosting
   
   const {
     isPlaying,
@@ -81,18 +78,10 @@ function App() {
     isDucked
   } = useAudioPlayer();
 
-  const {
-    mood,
-    energy,
-    crowdSize,
-    confidence,
-    isAnalyzing,
-    lastAnalysis,
-    error: geminiError,
-    enabled: geminiEnabled,
-    triggerAnalysis,
-    toggleEnabled: toggleGeminiEnabled
-  } = useGeminiMoodAnalysis(videoElement, true);
+  // Simple crowd analysis without complex mood tracking
+  const mood = currentMood;
+  const energy = 75; // Fixed energy level for event hosting
+  const confidence = 85; // Fixed confidence
 
   const triggerAnnouncement = (message: string) => {
     console.log('🎤 Triggering announcement:', message);
@@ -118,26 +107,6 @@ function App() {
   };
 
   const {
-    isAIActive,
-    toggleAI,
-    forceCheck,
-    isAnnouncing,
-    isTransitioning,
-    transitionProgress,
-    timeToNextCheck,
-    lastMood
-  } = useAIMoodDJ({
-    tracks: trackLibrary,
-    currentMood: mood,
-    energy,
-    crowdSize,
-    onTrackChange: loadTrack,
-    onAnnouncement: triggerAnnouncement,
-    isPlaying,
-    currentTrack
-  });
-
-  const {
     eventDetails,
     isActive: isEventActive,
     eventStarted,
@@ -152,7 +121,7 @@ function App() {
     triggeredMoments
   } = useSmartEventDJ({
     tracks: trackLibrary,
-    currentMood: mood,
+    currentMood: currentMood,
     energy,
     crowdSize,
     onTrackChange: loadTrack,
@@ -160,6 +129,9 @@ function App() {
     isPlaying,
     currentTrack
   });
+
+  // Simple state for announcements
+  const [isAnnouncing, setIsAnnouncing] = useState(false);
 
   // AWS Face Recognition
   const awsFaceRecognition = useServerSideAWSFaceRecognition({
@@ -192,12 +164,6 @@ function App() {
     addToLibrary(track);
   };
 
-  const handleMoodOverride = (type: 'hype' | 'chill') => {
-    setMoodOverride(type);
-    // Reset after 10 seconds
-    setTimeout(() => setMoodOverride(null), 10000);
-  };
-
   const handleStartSession = async () => {
     console.log('🎵 Starting DJ session...');
     
@@ -207,6 +173,7 @@ function App() {
     // Start smart emcee if event is configured
     if (eventSetup) {
       smartEmcee.startEvent();
+      setIsAnnouncing(true);
     }
     
     // Announce session start
@@ -244,6 +211,10 @@ function App() {
     }, 3000); // Wait for announcement
   };
   useEffect(() => {
+  // Update crowd size from AWS face recognition
+  useEffect(() => {
+    setCrowdSize(awsFaceRecognition.crowdAnalysis.faceCount);
+  }, [awsFaceRecognition.crowdAnalysis.faceCount]);
     document.title = 'DJ Tillu - Live AI DJ Experience';
   }, []);
 
@@ -330,33 +301,11 @@ function App() {
 
         {/* Right Panel - Crowd Analytics */}
         <DraggablePanel
-          title="AI Vision"
-          initialPosition={{ x: window.innerWidth - 340, y: 100 }}
-          initialSize={{ width: 320, height: 280 }}
-          className="z-40"
-          accentColor="blue"
-        >
-          <GeminiMoodDisplay
-            mood={mood}
-            energy={energy}
-            crowdSize={crowdSize}
-            confidence={confidence}
-            isAnalyzing={isAnalyzing}
-            lastAnalysis={lastAnalysis}
-            error={geminiError}
-            enabled={geminiEnabled}
-            onTriggerAnalysis={triggerAnalysis}
-            onToggleEnabled={toggleGeminiEnabled}
-          />
-        </DraggablePanel>
-
-        {/* AI Assistant - Right side under Crowd Analytics */}
-        <DraggablePanel
-          title="Smart Event DJ"
+          title="Event Dashboard"
           initialPosition={{ x: window.innerWidth - 340, y: 400 }}
           initialSize={{ width: 320, height: 280 }}
           className="z-40"
-          accentColor="yellow"
+          accentColor="blue"
         >
           <SmartEventDashboard
             eventDetails={eventDetails}
@@ -374,11 +323,11 @@ function App() {
 
         {/* Face Recognition - Left side under Track Library */}
         <DraggablePanel
-          title="Server-Side AWS Recognition"
+          title="VIP Face Recognition"
           initialPosition={{ x: 20, y: 520 }}
           initialSize={{ width: 320, height: 280 }}
           className="z-40"
-          accentColor="blue"
+          accentColor="green"
         >
           <ServerSideAWSPanel
             isInitialized={awsFaceRecognition.isInitialized}
@@ -392,13 +341,44 @@ function App() {
           />
         </DraggablePanel>
 
+        {/* Event Status - Top right */}
+        <DraggablePanel
+          title="Event Status"
+          initialPosition={{ x: window.innerWidth - 340, y: 100 }}
+          initialSize={{ width: 320, height: 200 }}
+          className="z-40"
+          accentColor="purple"
+        >
+          <div className="text-center space-y-3">
+            <div className="text-2xl">🎤</div>
+            <h3 className="text-lg font-bold text-white">AI Event Host</h3>
+            <div className="bg-white/10 rounded-lg p-3">
+              <div className="grid grid-cols-2 gap-4 text-center text-sm">
+                <div>
+                  <div className="text-green-300 font-bold text-lg">{awsFaceRecognition.recognizedPeople.length}</div>
+                  <div className="text-gray-400">VIPs Seen</div>
+                </div>
+                <div>
+                  <div className="text-blue-300 font-bold text-lg">{crowdSize}</div>
+                  <div className="text-gray-400">People Present</div>
+                </div>
+              </div>
+            </div>
+            <div className={`px-3 py-2 rounded-lg ${
+              smartEmcee.isActive ? 'bg-green-500/20 text-green-300' : 'bg-gray-500/20 text-gray-300'
+            }`}>
+              {smartEmcee.isActive ? '🟢 AI Host Active' : '⚪ AI Host Inactive'}
+            </div>
+          </div>
+        </DraggablePanel>
+
         {/* Voice Announcements - Bottom right */}
         <DraggablePanel
-          title="AI Assistant"
+          title="Voice Announcements"
           initialPosition={{ x: window.innerWidth - 340, y: 700 }}
           initialSize={{ width: 320, height: 200 }}
           className="z-40"
-          accentColor="green"
+          accentColor="yellow"
         >
           <VoiceAnnouncements 
             mood={mood} 
@@ -613,12 +593,10 @@ function App() {
 
 
         {/* AI Status Indicator */}
-        {(isAIActive || isEventActive || smartEmcee.isActive) && (
+        {(isEventActive || smartEmcee.isActive) && (
           <div className="absolute top-1/2 left-8 transform -translate-y-1/2 z-50">
             <div className={`px-4 py-2 rounded-full backdrop-blur-xl shadow-2xl border transition-all ${
-              isTransitioning 
-                ? 'bg-yellow-500/30 border-yellow-500/50'
-                : smartEmcee.isActive
+              smartEmcee.isActive
                 ? 'bg-blue-500/30 border-blue-500/50'
                 : isEventActive
                 ? 'bg-purple-500/30 border-purple-500/50'
@@ -626,24 +604,16 @@ function App() {
             }`}>
               <div className="flex items-center space-x-2">
                 <div className={`w-2 h-2 rounded-full animate-pulse ${
-                  isTransitioning ? 'bg-yellow-400' : 
                   smartEmcee.isActive ? 'bg-blue-400' :
                   isEventActive ? 'bg-purple-400' : 'bg-green-400'
                 }`}></div>
                 <span className={`font-semibold text-sm ${
-                  isTransitioning ? 'text-yellow-300' : 
                   smartEmcee.isActive ? 'text-blue-300' :
                   isEventActive ? 'text-purple-300' : 'text-green-300'
                 }`}>
-                  {isTransitioning ? 'TRANSITIONING' : 
-                   smartEmcee.isActive ? 'SMART EMCEE ACTIVE' :
+                  {smartEmcee.isActive ? 'AI EVENT HOST ACTIVE' :
                    isEventActive ? 'SMART EVENT ACTIVE' : 'AI DJ ACTIVE'}
                 </span>
-                {isTransitioning && (
-                  <span className="text-yellow-200 text-xs">
-                    {transitionProgress}%
-                  </span>
-                )}
               </div>
             </div>
           </div>
@@ -656,7 +626,7 @@ function App() {
               <div className="flex items-center space-x-2">
                 <div className="w-2 h-2 bg-blue-400 rounded-full animate-pulse"></div>
                 <span className="text-blue-300 font-semibold text-sm">
-                  SMART EMCEE • {smartEmcee.recognizedPeople.length} VIPs SEEN
+                  AI EVENT HOST • {smartEmcee.recognizedPeople.length} VIPs SEEN
                 </span>
               </div>
             </div>
@@ -670,7 +640,7 @@ function App() {
               <div className="flex items-center space-x-2">
                 <div className="w-2 h-2 bg-yellow-400 rounded-full animate-pulse"></div>
                 <span className="text-yellow-300 font-semibold text-sm">
-                  {isTransitioning ? 'MOOD TRANSITION' : 'ANNOUNCEMENT'}
+                  ANNOUNCEMENT
                 </span>
               </div>
             </div>
