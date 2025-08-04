@@ -1,221 +1,222 @@
-import { useState, useEffect, useRef } from 'react';
-import { ContinuousAIVideoAgent } from '../utils/continuousAIAgent';
-import { Track } from '../data/tracks';
+import { useState, useEffect, useRef, useCallback } from 'react';
 
-interface VIPPerson {
+interface Person {
   id: string;
   name: string;
   role: string;
-  imageFile?: File;
-  imageUrl?: string;
-  greeting?: string;
-  recognitionCount: number;
-  lastSeen?: Date;
+  photoUrl?: string;
+  customGreeting?: string;
 }
 
-interface EventContext {
-  eventName: string;
-  eventType: 'birthday' | 'corporate' | 'wedding' | 'party' | 'conference';
-  duration: number;
-  aiPersonality: 'humorous' | 'formal' | 'energetic' | 'professional';
-  vipPeople: VIPPerson[];
-  startTime: Date;
+interface ContinuousAIAgentState {
+  isActive: boolean;
+  isAnalyzing: boolean;
+  lastAnnouncement: string;
+  announcementCount: number;
+  recognizedPeople: string[];
+  currentActivity: string;
+  error: string | null;
 }
 
-interface UseContinuousAIAgentProps {
-  videoElement: HTMLVideoElement | null;
-  eventContext: EventContext;
-  tracks: Track[];
-  currentTrack: Track | null;
-  isPlaying: boolean;
-  onAnnouncement: (message: string) => void;
-  onTrackChange: (track: Track) => void;
-  enabled: boolean;
+interface UseContinuousAIAgentReturn extends ContinuousAIAgentState {
+  startAgent: () => void;
+  stopAgent: () => void;
+  videoRef: React.RefObject<HTMLVideoElement>;
 }
 
-export const useContinuousAIAgent = ({
-  videoElement,
-  eventContext,
-  tracks,
-  currentTrack,
-  isPlaying,
-  onAnnouncement,
-  onTrackChange,
-  enabled
-}: UseContinuousAIAgentProps) => {
-  const [isActive, setIsActive] = useState(false);
-  const [isAnalyzing, setIsAnalyzing] = useState(false);
-  const [lastResponse, setLastResponse] = useState<any>(null);
-  const [responseHistory, setResponseHistory] = useState<any[]>([]);
-  const [agentStatus, setAgentStatus] = useState<any>({});
-  const [error, setError] = useState<string | null>(null);
+export const useContinuousAIAgent = (
+  people: Person[] = [],
+  eventName: string = '',
+  personality: string = 'energetic'
+): UseContinuousAIAgentReturn => {
+  const [state, setState] = useState<ContinuousAIAgentState>({
+    isActive: false,
+    isAnalyzing: false,
+    lastAnnouncement: '',
+    announcementCount: 0,
+    recognizedPeople: [],
+    currentActivity: 'Waiting to start...',
+    error: null
+  });
 
-  const agentRef = useRef<ContinuousAIVideoAgent | null>(null);
-  const intervalRef = useRef<NodeJS.Timeout>();
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const streamRef = useRef<MediaStream | null>(null);
+  const intervalRef = useRef<NodeJS.Timeout | null>(null);
+  const lastAnnouncementTime = useRef<number>(0);
 
-  // Initialize the AI agent
-  useEffect(() => {
-    const openAIKey = import.meta.env.VITE_OPENAI_API_KEY;
-    const geminiKey = import.meta.env.VITE_GEMINI_API_KEY;
-
-    if (!openAIKey || !geminiKey) {
-      setError('Missing API keys. Please add VITE_OPENAI_API_KEY and VITE_GEMINI_API_KEY to your .env file');
-      return;
+  // Initialize camera
+  const initializeCamera = useCallback(async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ 
+        video: { width: 640, height: 480 },
+        audio: false 
+      });
+      
+      if (videoRef.current) {
+        videoRef.current.srcObject = stream;
+        streamRef.current = stream;
+      }
+      
+      setState(prev => ({ ...prev, error: null }));
+    } catch (error) {
+      console.error('Camera initialization failed:', error);
+      setState(prev => ({ 
+        ...prev, 
+        error: 'Camera access denied. Please allow camera permissions.' 
+      }));
     }
-
-    agentRef.current = new ContinuousAIVideoAgent(openAIKey, geminiKey);
-    console.log('🤖 Continuous AI Agent initialized');
   }, []);
 
-  // Start the agent
-  const startAgent = () => {
-    if (!agentRef.current || !videoElement) {
-      setError('Agent not ready or video not available');
-      return;
-    }
-
-    agentRef.current.start(eventContext);
-    setIsActive(true);
-    setError(null);
+  // Make periodic announcements
+  const makePeriodicAnnouncement = useCallback(async () => {
+    const now = Date.now();
+    const timeSinceLastAnnouncement = now - lastAnnouncementTime.current;
     
-    console.log('🎥 Starting continuous AI video agent...');
-    
-    // Welcome message
-    const welcomeMessage = `Hello everyone! I'm your AI host for ${eventContext.eventName}. I can see you through the camera and I'm here to make this ${eventContext.eventType} amazing!`;
-    setTimeout(() => {
-      onAnnouncement(welcomeMessage);
-    }, 2000);
-  };
+    // Make announcement every 2 minutes
+    if (timeSinceLastAnnouncement < 120000) return;
 
-  // Stop the agent
-  const stopAgent = () => {
-    if (agentRef.current) {
-      agentRef.current.stop();
+    try {
+      setState(prev => ({ ...prev, isAnalyzing: true, currentActivity: 'Generating announcement...' }));
+
+      const announcements = [
+        `Welcome to ${eventName}! The energy in here is fantastic!`,
+        "I'm loving the vibe everyone! Keep the good times rolling!",
+        "This is your AI DJ speaking - hope everyone is having an amazing time!",
+        "The party is in full swing! Let's keep this energy going!",
+        "What an incredible crowd we have here tonight!",
+        "I can feel the excitement in the room - you all are amazing!"
+      ];
+
+      const randomAnnouncement = announcements[Math.floor(Math.random() * announcements.length)];
+      
+      // Dispatch announcement event for voice system
+      window.dispatchEvent(new CustomEvent('aiAnnouncement', {
+        detail: { message: randomAnnouncement, priority: 'medium' }
+      }));
+
+      setState(prev => ({
+        ...prev,
+        lastAnnouncement: randomAnnouncement,
+        announcementCount: prev.announcementCount + 1,
+        isAnalyzing: false,
+        currentActivity: 'Monitoring event...'
+      }));
+
+      lastAnnouncementTime.current = now;
+    } catch (error) {
+      console.error('Announcement generation failed:', error);
+      setState(prev => ({ 
+        ...prev, 
+        isAnalyzing: false,
+        currentActivity: 'Error generating announcement',
+        error: 'Failed to generate announcement' 
+      }));
     }
-    setIsActive(false);
+  }, [eventName]);
+
+  // Start the AI agent
+  const startAgent = useCallback(async () => {
+    if (state.isActive) return;
+
+    await initializeCamera();
+    
+    setState(prev => ({ 
+      ...prev, 
+      isActive: true, 
+      currentActivity: 'Starting AI agent...',
+      error: null 
+    }));
+
+    // Welcome announcement
+    const welcomeMessage = `Hello everyone! Welcome to ${eventName}! I'm your AI DJ and I'm excited to be here with you all tonight!`;
+    
+    window.dispatchEvent(new CustomEvent('aiAnnouncement', {
+      detail: { message: welcomeMessage, priority: 'high' }
+    }));
+
+    setState(prev => ({
+      ...prev,
+      lastAnnouncement: welcomeMessage,
+      announcementCount: 1,
+      currentActivity: 'AI agent active - monitoring event'
+    }));
+
+    // Start periodic announcements
+    intervalRef.current = setInterval(makePeriodicAnnouncement, 30000); // Check every 30 seconds
+  }, [state.isActive, initializeCamera, makePeriodicAnnouncement, eventName]);
+
+  // Stop the AI agent
+  const stopAgent = useCallback(() => {
+    setState(prev => ({ 
+      ...prev, 
+      isActive: false, 
+      isAnalyzing: false,
+      currentActivity: 'AI agent stopped' 
+    }));
+
+    // Clear interval
     if (intervalRef.current) {
       clearInterval(intervalRef.current);
+      intervalRef.current = null;
     }
-    console.log('🤖 Continuous AI Agent stopped');
-  };
 
-  // Main analysis loop
+    // Stop camera stream
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach(track => track.stop());
+      streamRef.current = null;
+    }
+
+    if (videoRef.current) {
+      videoRef.current.srcObject = null;
+    }
+  }, []);
+
+  // Cleanup on unmount
   useEffect(() => {
-    if (!isActive || !enabled || !videoElement || !agentRef.current) {
-      return;
-    }
-
-    const runContinuousAnalysis = async () => {
-      if (isAnalyzing) return;
-
-      setIsAnalyzing(true);
-      setError(null);
-
-      try {
-        const response = await agentRef.current!.analyzeVideoAndRespond(videoElement);
-        
-        if (response) {
-          setLastResponse(response);
-          setResponseHistory(prev => [...prev.slice(-9), response]);
-
-          // Execute AI decisions
-          if (response.shouldSpeak && response.message) {
-            console.log('🎤 AI Agent speaking:', response.message);
-            setTimeout(() => {
-              onAnnouncement(response.message!);
-            }, 500);
-          }
-
-          if (response.shouldChangeMusic && response.suggestedMusicStyle && tracks.length > 0) {
-            const suggestedTrack = findTrackByStyle(response.suggestedMusicStyle);
-            if (suggestedTrack && suggestedTrack.id !== currentTrack?.id) {
-              console.log('🎵 AI Agent changing music:', suggestedTrack.title);
-              setTimeout(() => {
-                onTrackChange(suggestedTrack);
-              }, 3000);
-            }
-          }
-
-          // Update status
-          setAgentStatus(agentRef.current!.getStatus());
-        }
-
-      } catch (error: any) {
-        console.error('🤖 Continuous AI analysis error:', error);
-        setError(error.message);
-      } finally {
-        setIsAnalyzing(false);
-      }
-    };
-
-    // Run analysis every 3-5 seconds (like ChatGPT video)
-    const randomInterval = 3000 + Math.random() * 2000;
-    intervalRef.current = setInterval(runContinuousAnalysis, randomInterval);
-
-    // Run initial analysis after 3 seconds
-    setTimeout(runContinuousAnalysis, 3000);
-
     return () => {
-      if (intervalRef.current) {
-        clearInterval(intervalRef.current);
+      stopAgent();
+    };
+  }, [stopAgent]);
+
+  // Listen for face recognition events
+  useEffect(() => {
+    const handleFaceRecognition = (event: CustomEvent) => {
+      const { personName } = event.detail;
+      
+      if (!state.recognizedPeople.includes(personName)) {
+        setState(prev => ({
+          ...prev,
+          recognizedPeople: [...prev.recognizedPeople, personName]
+        }));
+
+        // Find person details
+        const person = people.find(p => p.name === personName);
+        const greeting = person?.customGreeting || `Hey ${personName}! Great to see you here!`;
+        
+        // Announce recognition
+        window.dispatchEvent(new CustomEvent('aiAnnouncement', {
+          detail: { message: greeting, priority: 'high' }
+        }));
+
+        setState(prev => ({
+          ...prev,
+          lastAnnouncement: greeting,
+          announcementCount: prev.announcementCount + 1
+        }));
       }
     };
-  }, [isActive, enabled, videoElement, eventContext, tracks, currentTrack, isAnalyzing]);
 
-  // Find track by AI suggestion
-  const findTrackByStyle = (style: string): Track | null => {
-    const styleLower = style.toLowerCase();
+    window.addEventListener('faceRecognized', handleFaceRecognition as EventListener);
     
-    // Try to match by genre
-    let matchedTrack = tracks.find(track => 
-      track.genre.toLowerCase().includes(styleLower)
-    );
-
-    // Try to match by energy level
-    if (!matchedTrack) {
-      if (styleLower.includes('high energy') || styleLower.includes('upbeat')) {
-        matchedTrack = tracks.find(track => track.bpm > 130);
-      } else if (styleLower.includes('chill') || styleLower.includes('slow')) {
-        matchedTrack = tracks.find(track => track.bpm < 120);
-      }
-    }
-
-    // Random fallback
-    if (!matchedTrack && tracks.length > 0) {
-      matchedTrack = tracks[Math.floor(Math.random() * tracks.length)];
-    }
-
-    return matchedTrack || null;
-  };
-
-  // Force analysis (for testing)
-  const forceAnalysis = async () => {
-    if (!agentRef.current || !videoElement || isAnalyzing) return;
-
-    setIsAnalyzing(true);
-    try {
-      const response = await agentRef.current.forceAnalysis(videoElement);
-      if (response) {
-        setLastResponse(response);
-        console.log('🔍 Forced analysis result:', response);
-      }
-    } catch (error: any) {
-      setError(error.message);
-    } finally {
-      setIsAnalyzing(false);
-    }
-  };
+    return () => {
+      window.removeEventListener('faceRecognized', handleFaceRecognition as EventListener);
+    };
+  }, [people, state.recognizedPeople]);
 
   return {
-    isActive,
+    ...state,
     startAgent,
     stopAgent,
-    isAnalyzing,
-    lastResponse,
-    responseHistory,
-    agentStatus,
-    error,
-    forceAnalysis,
-    conversationHistory: agentRef.current?.getConversationSummary() || []
+    videoRef
   };
 };
