@@ -432,7 +432,6 @@ export const EventSetupWizard: React.FC<EventSetupWizardProps> = ({
                           <option value="Family Member" />
                           <option value="Friend" />
                           <option value="Colleague" />
-                        >
                         </datalist>
                       </div>
                     </div>
