@@ -148,3 +148,5 @@ export const OpenAIEventHostPanel: React.FC<OpenAIEventHostPanelProps> = ({
     </div>
   );
 };
+
+export default OpenAIEventHostPanel
