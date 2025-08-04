@@ -1,498 +1,461 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Settings, Zap, Users, Music, Eye, Brain, Mic, Database, Globe, Calendar } from 'lucide-react';
-
-// Components
 import { FullscreenVideoBackground } from './components/FullscreenVideoBackground';
-import { FloatingControls } from './components/FloatingControls';
 import { DraggablePanel } from './components/DraggablePanel';
-import { TrackList } from './components/TrackList';
 import { NowPlaying } from './components/NowPlaying';
-import { AudioVisualizer } from './components/AudioVisualizer';
+import { TrackList } from './components/TrackList';
 import { GeminiMoodDisplay } from './components/GeminiMoodDisplay';
+import { AIDJPanel } from './components/AIDJPanel';
+import { VoiceAnnouncements } from './components/VoiceAnnouncements';
+import { AudioVisualizer } from './components/AudioVisualizer';
+import { AudiusBrowser } from './components/AudiusBrowser';
+import { SupabaseTrackManager } from './components/SupabaseTrackManager';
 import { ContinuousAIAgentPanel } from './components/ContinuousAIAgentPanel';
 import { ServerSideAWSPanel } from './components/ServerSideAWSPanel';
-import { VoiceAnnouncements } from './components/VoiceAnnouncements';
-import { SupabaseTrackManager } from './components/SupabaseTrackManager';
-import { AudiusBrowser } from './components/AudiusBrowser';
-import { SmartEventDashboard } from './components/SmartEventDashboard';
-import { EventSetupWizard } from './components/EventSetupWizard';
+import { FloatingControls } from './components/FloatingControls';
+import { EventSetupWizard, EventDetails } from './components/EventSetupWizard';
 import { DynamicBackground } from './components/DynamicBackground';
 
-// Hooks
 import { useAudioPlayer } from './hooks/useAudioPlayer';
 import { useTrackLibrary } from './hooks/useTrackLibrary';
 import { useGeminiMoodAnalysis } from './hooks/useGeminiMoodAnalysis';
+import { useAIMoodDJ } from './hooks/useAIMoodDJ';
 import { useContinuousAIAgent } from './hooks/useContinuousAIAgent';
 import { useServerSideAWSFaceRecognition } from './hooks/useServerSideAWSFaceRecognition';
-import { useSmartEventDJ } from './hooks/useSmartEventDJ';
 import { useWandbIntegration } from './hooks/useWandbIntegration';
 
-interface VIPPerson {
-  id: string;
-  name: string;
-  role: string;
-  imageFile?: File;
-  imageUrl?: string;
-  greeting?: string;
-  recognitionCount: number;
-  lastSeen?: Date;
-}
+import { Track } from './data/tracks';
 
-interface EventSetup {
-  eventName: string;
-  eventType: 'birthday' | 'corporate' | 'wedding' | 'party' | 'conference';
-  duration: number;
-  vipPeople: VIPPerson[];
-  aiPersonality: 'humorous' | 'formal' | 'energetic' | 'professional';
-  specialMoments: string[];
-}
-
-const App: React.FC = () => {
+function App() {
   // Core state
-  const [hasSessionStarted, setHasSessionStarted] = useState(false);
-  const [showSettings, setShowSettings] = useState(false);
   const [videoElement, setVideoElement] = useState<HTMLVideoElement | null>(null);
-  const [eventSetup, setEventSetup] = useState<EventSetup | null>(null);
+  const [showSettings, setShowSettings] = useState(false);
+  const [hasStarted, setHasStarted] = useState(false);
   const [showEventSetup, setShowEventSetup] = useState(true);
-  const [crowdSize, setCrowdSize] = useState(0);
+  const [eventDetails, setEventDetails] = useState<EventDetails | null>(null);
 
-  // Audio and tracks
-  const audioPlayer = useAudioPlayer();
-  const trackLibrary = useTrackLibrary();
+  // Audio player
+  const {
+    isPlaying,
+    currentTime,
+    duration,
+    volume,
+    currentTrack,
+    isLoading,
+    error: audioError,
+    loadTrack,
+    togglePlay,
+    seek,
+    setVolume,
+    duckAudio,
+    unduckAudio
+  } = useAudioPlayer();
 
-  // AI systems
-  const geminiMood = useGeminiMoodAnalysis(videoElement, hasSessionStarted);
-  
-  // Continuous AI Agent (ChatGPT-like video interaction)
-  const continuousAI = useContinuousAIAgent({
-    videoElement,
-    eventContext: eventSetup ? {
-      eventName: eventSetup.eventName,
-      eventType: eventSetup.eventType,
-      duration: eventSetup.duration,
-      aiPersonality: eventSetup.aiPersonality,
-      vipPeople: eventSetup.vipPeople,
-      startTime: new Date()
-    } : null,
-    tracks: trackLibrary.tracks,
-    currentTrack: audioPlayer.currentTrack,
-    isPlaying: audioPlayer.isPlaying,
-    onAnnouncement: handleAnnouncement,
-    onTrackChange: handleTrackChange,
-    enabled: hasSessionStarted && !!eventSetup
-  });
+  // Track library
+  const { tracks, isLoading: tracksLoading, addTrack } = useTrackLibrary();
 
-  // Server-side AWS Face Recognition
-  const awsFaceRecognition = useServerSideAWSFaceRecognition({
-    videoElement,
-    vipPeople: eventSetup?.vipPeople || [],
-    eventId: eventSetup?.eventName.replace(/\s+/g, '-').toLowerCase() || 'default',
-    enabled: hasSessionStarted && !!eventSetup,
-    onVIPRecognized: handleVIPRecognized
-  });
+  // Mood analysis with Gemini Vision
+  const {
+    mood,
+    energy,
+    crowdSize,
+    confidence,
+    isAnalyzing: isMoodAnalyzing,
+    lastAnalysis,
+    error: moodError,
+    enabled: moodEnabled,
+    triggerAnalysis,
+    toggleEnabled: toggleMoodEnabled
+  } = useGeminiMoodAnalysis(videoElement, eventDetails?.enableVideoAnalysis || false);
 
-  // Smart Event DJ
-  const smartEventDJ = useSmartEventDJ({
-    tracks: trackLibrary.tracks,
-    currentMood: geminiMood.mood,
-    energy: geminiMood.energy,
-    crowdSize: geminiMood.crowdSize,
-    onTrackChange: handleTrackChange,
-    onAnnouncement: handleAnnouncement,
-    isPlaying: audioPlayer.isPlaying,
-    currentTrack: audioPlayer.currentTrack
-  });
-
-  // Wandb integration for analytics
-  useWandbIntegration({
-    mood: geminiMood.mood,
-    energy: geminiMood.energy,
-    crowdSize: geminiMood.crowdSize,
-    confidence: geminiMood.confidence,
-    currentTrack: audioPlayer.currentTrack,
-    isPlaying: audioPlayer.isPlaying,
-    isAIActive: continuousAI.isActive
-  });
-
-  // Update crowd size from Gemini analysis
-  useEffect(() => {
-    setCrowdSize(geminiMood.crowdSize);
-  }, [geminiMood.crowdSize]);
-
-  // Auto-start first track when session begins
-  useEffect(() => {
-    if (hasSessionStarted && trackLibrary.tracks.length > 0 && !audioPlayer.currentTrack) {
-      const firstTrack = trackLibrary.tracks[0];
-      audioPlayer.loadTrack(firstTrack);
-      console.log('🎵 Auto-loaded first track:', firstTrack.title);
-    }
-  }, [hasSessionStarted, trackLibrary.tracks, audioPlayer.currentTrack]);
-
-  // Initialize event when setup is complete
-  useEffect(() => {
-    if (eventSetup) {
-      smartEventDJ.initializeEvent({
-        id: eventSetup.eventName.replace(/\s+/g, '-').toLowerCase(),
-        name: eventSetup.eventName,
-        type: eventSetup.eventType as any,
-        startTime: '09:00',
-        endTime: '17:00',
-        expectedAttendees: 50,
-        venue: 'Office',
-        specialMoments: [],
-        vipGuests: eventSetup.vipPeople.map(vip => ({
-          ...vip,
-          faceImageUrl: vip.imageUrl,
-          personalizedGreeting: vip.greeting
-        })),
-        musicPreferences: ['Electronic', 'Ambient'],
-        eventFlow: []
-      });
-    }
-  }, [eventSetup]);
-
-  const handleStartSession = () => {
-    setHasSessionStarted(true);
-    setShowEventSetup(false);
-    
-    // Start AI systems if event is configured
-    if (eventSetup) {
-      smartEventDJ.startEvent();
-      continuousAI.startAgent();
-    }
-    
-    // Welcome announcement
-    const welcomeMessage = eventSetup 
-      ? `Welcome to ${eventSetup.eventName}! DJ Tillu is now live and ready to make this event amazing!`
-      : "DJ Tillu is now live! Let's get this party started!";
-    
-    setTimeout(() => {
-      handleAnnouncement(welcomeMessage);
-    }, 2000);
-    
-    console.log('🎪 DJ Tillu session started!');
-  };
-
-  const handleTrackChange = (track: any) => {
-    audioPlayer.loadTrack(track);
-    console.log('🎵 Track changed to:', track.title);
-  };
-
+  // Define event handlers before using them in hooks
   const handleAnnouncement = (message: string) => {
-    // Trigger immediate announcement
+    console.log('🎤 Announcement triggered:', message);
+    
+    // Duck audio during announcement
+    duckAudio();
+    
+    // Dispatch global announcement event
     window.dispatchEvent(new CustomEvent('immediateAnnouncement', {
       detail: { message }
     }));
     
-    // Duck audio during announcement
-    audioPlayer.duckAudio();
-    
-    // Unduck after 5 seconds
+    // Restore audio after announcement (estimated 3 seconds per 10 words)
+    const estimatedDuration = Math.max(3000, (message.split(' ').length / 10) * 3000);
     setTimeout(() => {
-      audioPlayer.unduckAudio();
-    }, 5000);
+      unduckAudio();
+    }, estimatedDuration);
+  };
+
+  const handleTrackChange = (track: Track) => {
+    console.log('🎵 Track change requested:', track.title);
+    loadTrack(track);
+  };
+
+  const handleVIPRecognized = (person: any) => {
+    console.log('🌟 VIP recognized:', person.name);
     
-    console.log('🎤 Announcement triggered:', message);
+    // Dispatch VIP recognition event
+    window.dispatchEvent(new CustomEvent('personAnnouncement', {
+      detail: { 
+        personName: person.name,
+        message: person.greeting || `Welcome ${person.name}! Great to see you here!`
+      }
+    }));
   };
 
-  const handleVIPRecognized = (vip: VIPPerson) => {
-    console.log('🌟 VIP recognized:', vip.name);
-    
-    // Let the smart event DJ handle VIP announcements
-    smartEventDJ.handleVIPRecognized(vip);
+  // AI DJ system
+  const {
+    isAIActive,
+    toggleAI,
+    forceCheck,
+    isAnnouncing,
+    isTransitioning,
+    timeToNextCheck,
+    lastMood
+  } = useAIMoodDJ({
+    tracks,
+    currentMood: mood,
+    energy,
+    crowdSize,
+    onTrackChange: handleTrackChange,
+    onAnnouncement: handleAnnouncement,
+    isPlaying,
+    currentTrack
+  });
+
+  // Continuous AI Agent
+  const eventContext = eventDetails ? {
+    eventName: eventDetails.name,
+    eventType: eventDetails.type as any,
+    duration: eventDetails.duration,
+    aiPersonality: eventDetails.aiPersonality as any,
+    vipPeople: eventDetails.vipPeople.map(vip => ({
+      ...vip,
+      recognitionCount: 0
+    })),
+    startTime: new Date()
+  } : null;
+
+  const {
+    isActive: isAIAgentActive,
+    startAgent,
+    stopAgent,
+    isAnalyzing: isAIAnalyzing,
+    lastResponse: aiLastResponse,
+    responseHistory: aiResponseHistory,
+    agentStatus,
+    error: aiError,
+    forceAnalysis,
+    conversationHistory
+  } = useContinuousAIAgent({
+    videoElement,
+    eventContext: eventContext!,
+    tracks,
+    currentTrack,
+    isPlaying,
+    onAnnouncement: handleAnnouncement,
+    onTrackChange: handleTrackChange,
+    enabled: eventDetails?.enableVideoAnalysis || false
+  });
+
+  // Server-side AWS Face Recognition
+  const {
+    isInitialized: awsInitialized,
+    isAnalyzing: awsAnalyzing,
+    recognizedPeople: awsRecognizedPeople,
+    lastAnalysis: awsLastAnalysis,
+    error: awsError,
+    crowdAnalysis: awsCrowdAnalysis
+  } = useServerSideAWSFaceRecognition({
+    videoElement,
+    vipPeople: eventDetails?.vipPeople.map(vip => ({
+      ...vip,
+      recognitionCount: 0
+    })) || [],
+    eventId: eventDetails?.name.replace(/\s+/g, '-').toLowerCase() || 'default',
+    enabled: eventDetails?.enableFaceRecognition || false,
+    onVIPRecognized: handleVIPRecognized
+  });
+
+  // WandB Integration for analytics
+  useWandbIntegration({
+    mood,
+    energy,
+    crowdSize,
+    confidence,
+    currentTrack,
+    isPlaying,
+    isAIActive
+  });
+
+  // Handle video ready
+  const handleVideoReady = (video: HTMLVideoElement | null) => {
+    setVideoElement(video);
+    console.log('📹 Video element ready:', !!video);
   };
 
-  const handleEventSetupComplete = (setup: EventSetup) => {
-    setEventSetup(setup);
+  // Handle event setup completion
+  const handleEventSetupComplete = (details: EventDetails) => {
+    setEventDetails(details);
     setShowEventSetup(false);
-    console.log('✅ Event setup complete:', setup.eventName);
+    console.log('🎪 Event setup completed:', details.name);
   };
 
-  const handleSkipSetup = () => {
-    setShowEventSetup(false);
-    console.log('⏭️ Event setup skipped - basic DJ mode');
+  // Handle session start
+  const handleStartSession = () => {
+    if (!hasStarted) {
+      setHasStarted(true);
+      console.log('🚀 DJ Tillu session started!');
+      
+      // Start first track if available
+      if (tracks.length > 0 && !currentTrack) {
+        loadTrack(tracks[0]);
+      }
+    }
   };
 
-  // Show event setup wizard first
-  if (showEventSetup) {
-    return (
-      <div className="min-h-screen bg-gradient-to-br from-purple-900 via-black to-pink-900 flex items-center justify-center p-4">
-        <EventSetupWizard
-          onSetupComplete={handleEventSetupComplete}
-          onSkipSetup={handleSkipSetup}
-        />
-      </div>
-    );
-  }
+  // Handle track selection
+  const handleTrackSelect = (track: Track) => {
+    loadTrack(track);
+    if (!isPlaying) {
+      setTimeout(() => togglePlay(), 100);
+    }
+  };
 
   return (
-    <div className="relative min-h-screen overflow-hidden">
+    <div className="relative w-full h-screen overflow-hidden bg-black">
       {/* Dynamic Background */}
       <DynamicBackground 
-        mood={geminiMood.mood} 
-        energy={geminiMood.energy} 
-        isPlaying={audioPlayer.isPlaying} 
+        mood={mood} 
+        energy={energy} 
+        isPlaying={isPlaying} 
       />
 
       {/* Fullscreen Video Background */}
-      <FullscreenVideoBackground onVideoReady={setVideoElement} />
+      <FullscreenVideoBackground onVideoReady={handleVideoReady} />
+
+      {/* Event Setup Wizard */}
+      {showEventSetup && (
+        <EventSetupWizard
+          onComplete={handleEventSetupComplete}
+          onSkip={() => setShowEventSetup(false)}
+        />
+      )}
 
       {/* Floating Controls */}
       <FloatingControls
-        isPlaying={audioPlayer.isPlaying}
-        onPlayToggle={audioPlayer.togglePlay}
+        isPlaying={isPlaying}
+        onPlayToggle={togglePlay}
         onSettingsToggle={() => setShowSettings(!showSettings)}
         onStartSession={handleStartSession}
-        hasStarted={hasSessionStarted}
+        hasStarted={hasStarted}
       />
 
-      {/* Settings Panels */}
-      {showSettings && (
+      {/* Main UI Panels */}
+      {hasStarted && (
         <>
-          {/* Track Library */}
-          <DraggablePanel
-            title="Music Library"
-            initialPosition={{ x: 20, y: 100 }}
-            initialSize={{ width: 350, height: 500 }}
-            accentColor="purple"
-          >
-            <TrackList
-              tracks={trackLibrary.tracks}
-              currentTrack={audioPlayer.currentTrack}
-              isPlaying={audioPlayer.isPlaying}
-              onTrackSelect={handleTrackChange}
-              onPlayToggle={audioPlayer.togglePlay}
-            />
-          </DraggablePanel>
-
-          {/* Now Playing */}
+          {/* Now Playing Panel */}
           <DraggablePanel
             title="Now Playing"
-            initialPosition={{ x: 390, y: 100 }}
+            initialPosition={{ x: 20, y: 20 }}
             initialSize={{ width: 320, height: 400 }}
-            accentColor="pink"
+            accentColor="purple"
           >
             <NowPlaying
-              currentTrack={audioPlayer.currentTrack}
-              isPlaying={audioPlayer.isPlaying}
-              currentTime={audioPlayer.currentTime}
-              duration={audioPlayer.duration}
-              volume={audioPlayer.volume}
-              isLoading={audioPlayer.isLoading}
-              error={audioPlayer.error}
-              onPlayToggle={audioPlayer.togglePlay}
-              onSeek={audioPlayer.seek}
-              onVolumeChange={audioPlayer.setVolume}
+              currentTrack={currentTrack}
+              isPlaying={isPlaying}
+              currentTime={currentTime}
+              duration={duration}
+              volume={volume}
+              isLoading={isLoading}
+              error={audioError}
+              onPlayToggle={togglePlay}
+              onSeek={seek}
+              onVolumeChange={setVolume}
             />
           </DraggablePanel>
 
-          {/* Audio Visualizer */}
+          {/* Track Library Panel */}
           <DraggablePanel
-            title="Audio Visualizer"
-            initialPosition={{ x: 730, y: 100 }}
+            title="Track Library"
+            initialPosition={{ x: 360, y: 20 }}
+            initialSize={{ width: 350, height: 500 }}
+            accentColor="blue"
+          >
+            <TrackList
+              tracks={tracks}
+              currentTrack={currentTrack}
+              isPlaying={isPlaying}
+              onTrackSelect={handleTrackSelect}
+              onPlayToggle={togglePlay}
+            />
+          </DraggablePanel>
+
+          {/* AI Mood Analysis Panel */}
+          <DraggablePanel
+            title="AI Mood Analysis"
+            initialPosition={{ x: 730, y: 20 }}
             initialSize={{ width: 300, height: 350 }}
             accentColor="green"
           >
-            <AudioVisualizer
-              isPlaying={audioPlayer.isPlaying}
-              audioElement={audioPlayer.audioElement}
-              mood={geminiMood.mood}
-            />
-          </DraggablePanel>
-
-          {/* Gemini Mood Analysis */}
-          <DraggablePanel
-            title="AI Vision Analysis"
-            initialPosition={{ x: 1050, y: 100 }}
-            initialSize={{ width: 320, height: 400 }}
-            accentColor="blue"
-          >
             <GeminiMoodDisplay
-              mood={geminiMood.mood}
-              energy={geminiMood.energy}
-              crowdSize={geminiMood.crowdSize}
-              confidence={geminiMood.confidence}
-              isAnalyzing={geminiMood.isAnalyzing}
-              lastAnalysis={geminiMood.lastAnalysis}
-              error={geminiMood.error}
-              enabled={geminiMood.enabled}
-              onTriggerAnalysis={geminiMood.triggerAnalysis}
-              onToggleEnabled={geminiMood.toggleEnabled}
+              mood={mood}
+              energy={energy}
+              crowdSize={crowdSize}
+              confidence={confidence}
+              isAnalyzing={isMoodAnalyzing}
+              lastAnalysis={lastAnalysis}
+              error={moodError}
+              enabled={moodEnabled}
+              onTriggerAnalysis={triggerAnalysis}
+              onToggleEnabled={toggleMoodEnabled}
             />
           </DraggablePanel>
 
-          {/* Continuous AI Agent */}
-          {eventSetup && (
-            <DraggablePanel
-              title="AI Video Agent"
-              initialPosition={{ x: 20, y: 520 }}
-              initialSize={{ width: 350, height: 450 }}
-              accentColor="yellow"
-            >
-              <ContinuousAIAgentPanel
-                isActive={continuousAI.isActive}
-                onStartAgent={continuousAI.startAgent}
-                onStopAgent={continuousAI.stopAgent}
-                isAnalyzing={continuousAI.isAnalyzing}
-                lastResponse={continuousAI.lastResponse}
-                responseHistory={continuousAI.responseHistory}
-                agentStatus={continuousAI.agentStatus}
-                error={continuousAI.error}
-                onForceAnalysis={continuousAI.forceAnalysis}
-                conversationHistory={continuousAI.conversationHistory}
-                eventContext={eventSetup}
-              />
-            </DraggablePanel>
-          )}
+          {/* AI DJ Panel */}
+          <DraggablePanel
+            title="AI DJ Assistant"
+            initialPosition={{ x: 1050, y: 20 }}
+            initialSize={{ width: 280, height: 300 }}
+            accentColor="yellow"
+          >
+            <AIDJPanel
+              isAIActive={isAIActive}
+              onToggleAI={toggleAI}
+              onForceCheck={forceCheck}
+              isAnnouncing={isAnnouncing}
+              isTransitioning={isTransitioning}
+              timeToNextCheck={timeToNextCheck}
+              lastMood={lastMood}
+              currentMood={mood}
+            />
+          </DraggablePanel>
 
-          {/* Server-Side AWS Face Recognition */}
-          {eventSetup && (
-            <DraggablePanel
-              title="Face Recognition"
-              initialPosition={{ x: 390, y: 520 }}
-              initialSize={{ width: 350, height: 450 }}
-              accentColor="red"
-            >
-              <ServerSideAWSPanel
-                isInitialized={awsFaceRecognition.isInitialized}
-                isAnalyzing={awsFaceRecognition.isAnalyzing}
-                recognizedPeople={awsFaceRecognition.recognizedPeople}
-                lastAnalysis={awsFaceRecognition.lastAnalysis}
-                error={awsFaceRecognition.error}
-                crowdAnalysis={awsFaceRecognition.crowdAnalysis}
-                vipPeople={eventSetup.vipPeople}
-                enabled={hasSessionStarted}
-              />
-            </DraggablePanel>
-          )}
-
-          {/* Voice Announcements */}
+          {/* Voice Announcements Panel */}
           <DraggablePanel
             title="Voice System"
-            initialPosition={{ x: 760, y: 520 }}
-            initialSize={{ width: 320, height: 450 }}
-            accentColor="green"
+            initialPosition={{ x: 20, y: 440 }}
+            initialSize={{ width: 320, height: 400 }}
+            accentColor="pink"
           >
             <VoiceAnnouncements
-              mood={geminiMood.mood}
-              energy={geminiMood.energy}
-              crowdSize={geminiMood.crowdSize}
-              currentTrack={audioPlayer.currentTrack?.title || 'None'}
-              onAnnouncementStart={() => audioPlayer.duckAudio()}
-              onAnnouncementEnd={() => audioPlayer.unduckAudio()}
+              mood={mood}
+              energy={energy}
+              crowdSize={crowdSize}
+              currentTrack={currentTrack?.title || ''}
+              onAnnouncementStart={duckAudio}
+              onAnnouncementEnd={unduckAudio}
             />
           </DraggablePanel>
 
-          {/* Smart Event Dashboard */}
-          {eventSetup && (
-            <DraggablePanel
-              title="Event Dashboard"
-              initialPosition={{ x: 1100, y: 520 }}
-              initialSize={{ width: 350, height: 450 }}
-              accentColor="purple"
-            >
-              <SmartEventDashboard
-                eventDetails={smartEventDJ.eventDetails}
-                isActive={smartEventDJ.isActive}
-                eventStarted={smartEventDJ.eventStarted}
-                currentPhase={smartEventDJ.currentPhase}
-                recognizedVIPs={smartEventDJ.recognizedVIPs}
-                eventStatus={smartEventDJ.getEventStatus()}
-                upcomingMoments={smartEventDJ.getUpcomingMoments()}
-                triggeredMoments={smartEventDJ.triggeredMoments}
-                onStartEvent={smartEventDJ.startEvent}
-                onStopEvent={smartEventDJ.stopEvent}
-              />
-            </DraggablePanel>
+          {/* Audio Visualizer Panel */}
+          <DraggablePanel
+            title="Audio Visualizer"
+            initialPosition={{ x: 360, y: 540 }}
+            initialSize={{ width: 350, height: 300 }}
+            accentColor="red"
+          >
+            <AudioVisualizer
+              isPlaying={isPlaying}
+              audioElement={null}
+              mood={mood}
+            />
+          </DraggablePanel>
+
+          {/* Settings Panels */}
+          {showSettings && (
+            <>
+              {/* Audius Browser */}
+              <DraggablePanel
+                title="Audius Music Browser"
+                initialPosition={{ x: 730, y: 390 }}
+                initialSize={{ width: 350, height: 450 }}
+                accentColor="blue"
+              >
+                <AudiusBrowser
+                  onTrackSelect={handleTrackSelect}
+                  onAddToLibrary={addTrack}
+                  currentMood={mood}
+                />
+              </DraggablePanel>
+
+              {/* Supabase Track Manager */}
+              <DraggablePanel
+                title="Supabase Track Manager"
+                initialPosition={{ x: 1100, y: 340 }}
+                initialSize={{ width: 350, height: 400 }}
+                accentColor="green"
+              >
+                <SupabaseTrackManager
+                  onTrackSelect={handleTrackSelect}
+                  onAddToLibrary={addTrack}
+                />
+              </DraggablePanel>
+
+              {/* Continuous AI Agent Panel */}
+              {eventDetails?.enableVideoAnalysis && eventContext && (
+                <DraggablePanel
+                  title="AI Video Agent"
+                  initialPosition={{ x: 1470, y: 20 }}
+                  initialSize={{ width: 350, height: 500 }}
+                  accentColor="blue"
+                >
+                  <ContinuousAIAgentPanel
+                    isActive={isAIAgentActive}
+                    onStartAgent={startAgent}
+                    onStopAgent={stopAgent}
+                    isAnalyzing={isAIAnalyzing}
+                    lastResponse={aiLastResponse}
+                    responseHistory={aiResponseHistory}
+                    agentStatus={agentStatus}
+                    error={aiError}
+                    onForceAnalysis={forceAnalysis}
+                    conversationHistory={conversationHistory}
+                    eventContext={eventContext}
+                  />
+                </DraggablePanel>
+              )}
+
+              {/* Server-Side AWS Panel */}
+              {eventDetails?.enableFaceRecognition && (
+                <DraggablePanel
+                  title="AWS Face Recognition"
+                  initialPosition={{ x: 1470, y: 540 }}
+                  initialSize={{ width: 350, height: 400 }}
+                  accentColor="blue"
+                >
+                  <ServerSideAWSPanel
+                    isInitialized={awsInitialized}
+                    isAnalyzing={awsAnalyzing}
+                    recognizedPeople={awsRecognizedPeople}
+                    lastAnalysis={awsLastAnalysis}
+                    error={awsError}
+                    crowdAnalysis={awsCrowdAnalysis}
+                    vipPeople={eventDetails?.vipPeople.map(vip => ({
+                      ...vip,
+                      recognitionCount: 0
+                    })) || []}
+                    enabled={eventDetails?.enableFaceRecognition || false}
+                  />
+                </DraggablePanel>
+              )}
+            </>
           )}
-
-          {/* Supabase Track Manager */}
-          <DraggablePanel
-            title="Upload Music"
-            initialPosition={{ x: 20, y: 300 }}
-            initialSize={{ width: 350, height: 400 }}
-            accentColor="blue"
-          >
-            <SupabaseTrackManager
-              onTrackSelect={handleTrackChange}
-              onAddToLibrary={trackLibrary.addTrack}
-            />
-          </DraggablePanel>
-
-          {/* Audius Browser */}
-          <DraggablePanel
-            title="Audius Music"
-            initialPosition={{ x: 390, y: 300 }}
-            initialSize={{ width: 350, height: 400 }}
-            accentColor="green"
-          >
-            <AudiusBrowser
-              onTrackSelect={handleTrackChange}
-              onAddToLibrary={trackLibrary.addTrack}
-              currentMood={geminiMood.mood}
-            />
-          </DraggablePanel>
         </>
       )}
 
-      {/* Status Bar */}
-      {hasSessionStarted && (
-        <div className="absolute bottom-4 left-4 right-4 z-40">
-          <div className="bg-black/20 backdrop-blur-xl rounded-2xl border border-white/10 p-4">
-            <div className="flex items-center justify-between text-white">
-              <div className="flex items-center space-x-6">
-                <div className="flex items-center space-x-2">
-                  <div className={`w-2 h-2 rounded-full ${audioPlayer.isPlaying ? 'bg-green-400 animate-pulse' : 'bg-gray-400'}`}></div>
-                  <span className="text-sm">
-                    {audioPlayer.currentTrack?.title || 'No track selected'}
-                  </span>
-                </div>
-                
-                <div className="flex items-center space-x-2">
-                  <Eye className="w-4 h-4 text-purple-400" />
-                  <span className="text-sm">{geminiMood.mood}</span>
-                  <span className="text-xs text-gray-300">{geminiMood.energy}%</span>
-                </div>
-                
-                <div className="flex items-center space-x-2">
-                  <Users className="w-4 h-4 text-blue-400" />
-                  <span className="text-sm">{geminiMood.crowdSize} people</span>
-                </div>
-
-                {eventSetup && (
-                  <div className="flex items-center space-x-2">
-                    <Calendar className="w-4 h-4 text-green-400" />
-                    <span className="text-sm">{eventSetup.eventName}</span>
-                  </div>
-                )}
-              </div>
-
-              <div className="flex items-center space-x-4">
-                {continuousAI.isActive && (
-                  <div className="flex items-center space-x-1">
-                    <Brain className="w-4 h-4 text-yellow-400" />
-                    <span className="text-xs text-yellow-300">AI Active</span>
-                  </div>
-                )}
-                
-                {awsFaceRecognition.isInitialized && (
-                  <div className="flex items-center space-x-1">
-                    <Eye className="w-4 h-4 text-red-400" />
-                    <span className="text-xs text-red-300">Face Recognition</span>
-                  </div>
-                )}
-                
-                <div className="flex items-center space-x-1">
-                  <Mic className="w-4 h-4 text-green-400" />
-                  <span className="text-xs text-green-300">Voice Ready</span>
-                </div>
-              </div>
-            </div>
+      {/* Loading Overlay */}
+      {tracksLoading && (
+        <div className="absolute inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50">
+          <div className="text-center text-white">
+            <div className="w-16 h-16 border-4 border-purple-500 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
+            <h3 className="text-xl font-semibold mb-2">Loading Music Library</h3>
+            <p className="text-gray-300">Fetching tracks from Audius...</p>
           </div>
         </div>
       )}
     </div>
   );
-};
+}
 
 export default App;
