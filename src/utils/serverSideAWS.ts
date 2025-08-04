@@ -1,187 +1,239 @@
-// Client-side service to communicate with server-side AWS functions
+// Server-side AWS utilities for face recognition
+// This file contains helper functions for AWS Rekognition operations
+
+export interface AWSConfig {
+  region: string;
+  accessKeyId: string;
+  secretAccessKey: string;
+  bucketName: string;
+}
+
+export interface FaceMatch {
+  faceId: string;
+  confidence: number;
+  personId?: string;
+  personName?: string;
+  personRole?: string;
+}
+
+export interface CrowdAnalysis {
+  totalFaces: number;
+  averageAge?: number;
+  genderDistribution?: {
+    male: number;
+    female: number;
+  };
+  emotions?: {
+    happy: number;
+    sad: number;
+    angry: number;
+    surprised: number;
+    disgusted: number;
+    fearful: number;
+    calm: number;
+  };
+}
+
 export interface VIPPerson {
   id: string;
   name: string;
   role: string;
-  imageFile?: File;
-  imageUrl?: string;
-  recognitionCount: number;
-  lastSeen?: Date;
+  imageData: string; // base64 encoded image
 }
 
-export interface FaceMatch {
-  confidence: number;
-  personName: string;
-  personId: string;
-  boundingBox: {
-    left: number;
-    top: number;
-    width: number;
-    height: number;
-  };
-}
+// Helper function to validate AWS configuration
+export const validateAWSConfig = (config: Partial<AWSConfig>): config is AWSConfig => {
+  return !!(
+    config.region &&
+    config.accessKeyId &&
+    config.secretAccessKey &&
+    config.bucketName
+  );
+};
 
-export interface CrowdAnalysis {
-  faceCount: number;
-  emotions: string[];
-  averageAge: number;
-  dominantEmotion: string;
-}
+// Helper function to generate unique collection ID
+export const generateCollectionId = (eventId: string): string => {
+  return `dj-tillu-event-${eventId}-${Date.now()}`;
+};
 
-export class ServerSideAWSService {
-  private baseUrl: string;
+// Helper function to generate S3 key for face images
+export const generateS3Key = (personId: string, eventId: string): string => {
+  return `events/${eventId}/faces/${personId}.jpg`;
+};
 
-  constructor() {
-    this.baseUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/aws-face-recognition`;
-  }
-
-  private async makeRequest(data: any): Promise<any> {
-    const response = await fetch(this.baseUrl, {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(data)
-    });
-
-    if (!response.ok) {
-      const errorData = await response.json().catch(() => ({ error: 'Unknown error' }));
-      throw new Error(errorData.error || `HTTP ${response.status}`);
-    }
-
-    return response.json();
-  }
-
-  // Convert File to base64
-  private async fileToBase64(file: File): Promise<string> {
-    return new Promise((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onload = () => {
-        const result = reader.result as string;
-        // Remove data URL prefix (data:image/jpeg;base64,)
-        const base64 = result.split(',')[1];
-        resolve(base64);
+// Helper function to process face recognition results
+export const processFaceResults = (
+  rekognitionResults: any,
+  vipPeople: VIPPerson[]
+): {
+  faces: FaceMatch[];
+  crowdAnalysis: CrowdAnalysis;
+  vipMatches: FaceMatch[];
+} => {
+  const faces: FaceMatch[] = [];
+  const vipMatches: FaceMatch[] = [];
+  
+  // Process face matches
+  if (rekognitionResults.FaceMatches) {
+    rekognitionResults.FaceMatches.forEach((match: any) => {
+      const faceMatch: FaceMatch = {
+        faceId: match.Face.FaceId,
+        confidence: match.Similarity,
       };
-      reader.onerror = reject;
-      reader.readAsDataURL(file);
-    });
-  }
-
-  // Convert video frame to base64
-  private videoFrameToBase64(videoElement: HTMLVideoElement): string {
-    const canvas = document.createElement('canvas');
-    const ctx = canvas.getContext('2d');
-    if (!ctx) throw new Error('Canvas context not available');
-
-    canvas.width = videoElement.videoWidth;
-    canvas.height = videoElement.videoHeight;
-    ctx.drawImage(videoElement, 0, 0);
-
-    // Get base64 without data URL prefix
-    return canvas.toDataURL('image/jpeg', 0.8).split(',')[1];
-  }
-
-  // Initialize AWS services for an event
-  async initializeEvent(eventId: string, vipPeople: VIPPerson[]): Promise<{
-    success: boolean;
-    message: string;
-    vipCount?: number;
-  }> {
-    try {
-      console.log('🔧 Initializing server-side AWS services...');
-
-      // Convert VIP images to base64
-      const processedVIPs = await Promise.all(
-        vipPeople.map(async (person) => {
-          if (person.imageFile) {
-            const imageData = await this.fileToBase64(person.imageFile);
-            return {
-              id: person.id,
-              name: person.name,
-              role: person.role,
-              imageData
-            };
-          }
-          return {
-            id: person.id,
-            name: person.name,
-            role: person.role
-          };
-        })
+      
+      // Check if this is a VIP match
+      const vipPerson = vipPeople.find(person => 
+        match.Face.ExternalImageId === person.id
       );
-
-      const result = await this.makeRequest({
-        action: 'initialize',
-        eventId,
-        vipPeople: processedVIPs
-      });
-
-      console.log('✅ Server-side AWS initialization complete');
-      return result;
-
-    } catch (error: any) {
-      console.error('❌ Server-side AWS initialization failed:', error);
-      throw new Error(`AWS initialization failed: ${error.message}`);
-    }
-  }
-
-  // Recognize faces in video frame
-  async recognizeFaces(eventId: string, videoElement: HTMLVideoElement): Promise<{
-    matches: FaceMatch[];
-    crowdAnalysis: CrowdAnalysis;
-  }> {
-    try {
-      const imageData = this.videoFrameToBase64(videoElement);
-
-      const result = await this.makeRequest({
-        action: 'recognize',
-        eventId,
-        imageData
-      });
-
-      if (!result.success) {
-        throw new Error('Recognition failed on server');
+      
+      if (vipPerson && match.Similarity > 75) {
+        faceMatch.personId = vipPerson.id;
+        faceMatch.personName = vipPerson.name;
+        faceMatch.personRole = vipPerson.role;
+        vipMatches.push(faceMatch);
       }
-
-      return {
-        matches: result.matches || [],
-        crowdAnalysis: result.crowdAnalysis || {
-          faceCount: 0,
-          emotions: [],
-          averageAge: 0,
-          dominantEmotion: 'neutral'
-        }
+      
+      faces.push(faceMatch);
+    });
+  }
+  
+  // Process crowd analysis
+  const crowdAnalysis: CrowdAnalysis = {
+    totalFaces: rekognitionResults.FaceDetails?.length || 0,
+  };
+  
+  if (rekognitionResults.FaceDetails) {
+    const faceDetails = rekognitionResults.FaceDetails;
+    
+    // Calculate average age
+    const ages = faceDetails
+      .filter((face: any) => face.AgeRange)
+      .map((face: any) => (face.AgeRange.Low + face.AgeRange.High) / 2);
+    
+    if (ages.length > 0) {
+      crowdAnalysis.averageAge = ages.reduce((sum: number, age: number) => sum + age, 0) / ages.length;
+    }
+    
+    // Calculate gender distribution
+    const genders = faceDetails
+      .filter((face: any) => face.Gender)
+      .map((face: any) => face.Gender.Value.toLowerCase());
+    
+    if (genders.length > 0) {
+      crowdAnalysis.genderDistribution = {
+        male: genders.filter(g => g === 'male').length,
+        female: genders.filter(g => g === 'female').length,
       };
-
-    } catch (error: any) {
-      console.error('❌ Server-side face recognition failed:', error);
-      return {
-        matches: [],
-        crowdAnalysis: {
-          faceCount: 0,
-          emotions: [],
-          averageAge: 0,
-          dominantEmotion: 'neutral'
-        }
+    }
+    
+    // Calculate emotion distribution
+    const emotions = faceDetails
+      .filter((face: any) => face.Emotions)
+      .flatMap((face: any) => face.Emotions);
+    
+    if (emotions.length > 0) {
+      const emotionCounts = emotions.reduce((acc: any, emotion: any) => {
+        const type = emotion.Type.toLowerCase();
+        acc[type] = (acc[type] || 0) + emotion.Confidence;
+        return acc;
+      }, {});
+      
+      crowdAnalysis.emotions = {
+        happy: emotionCounts.happy || 0,
+        sad: emotionCounts.sad || 0,
+        angry: emotionCounts.angry || 0,
+        surprised: emotionCounts.surprised || 0,
+        disgusted: emotionCounts.disgusted || 0,
+        fearful: emotionCounts.fearful || 0,
+        calm: emotionCounts.calm || 0,
       };
     }
   }
+  
+  return {
+    faces,
+    crowdAnalysis,
+    vipMatches,
+  };
+};
 
-  // Clean up AWS resources
-  async cleanupEvent(eventId: string): Promise<boolean> {
-    try {
-      const result = await this.makeRequest({
-        action: 'cleanup',
-        eventId
-      });
+// Helper function to format recognition results for logging
+export const formatRecognitionResults = (
+  faces: FaceMatch[],
+  crowdAnalysis: CrowdAnalysis,
+  vipMatches: FaceMatch[]
+): string => {
+  const parts = [
+    `Total faces: ${crowdAnalysis.totalFaces}`,
+  ];
+  
+  if (crowdAnalysis.averageAge) {
+    parts.push(`Average age: ${Math.round(crowdAnalysis.averageAge)}`);
+  }
+  
+  if (crowdAnalysis.genderDistribution) {
+    const { male, female } = crowdAnalysis.genderDistribution;
+    parts.push(`Gender: ${male}M/${female}F`);
+  }
+  
+  if (vipMatches.length > 0) {
+    const vipNames = vipMatches.map(match => 
+      `${match.personName} (${Math.round(match.confidence)}%)`
+    ).join(', ');
+    parts.push(`VIPs: ${vipNames}`);
+  }
+  
+  return parts.join(' | ');
+};
 
-      return result.success;
-    } catch (error: any) {
-      console.error('❌ Server-side cleanup failed:', error);
-      return false;
-    }
+// Error handling utilities
+export class AWSRekognitionError extends Error {
+  constructor(
+    message: string,
+    public code?: string,
+    public statusCode?: number
+  ) {
+    super(message);
+    this.name = 'AWSRekognitionError';
   }
 }
 
-export const serverSideAWS = new ServerSideAWSService();
+export const handleAWSError = (error: any): AWSRekognitionError => {
+  if (error.code === 'ResourceNotFoundException') {
+    return new AWSRekognitionError(
+      'Face collection not found. Please initialize the collection first.',
+      error.code,
+      404
+    );
+  }
+  
+  if (error.code === 'InvalidParameterException') {
+    return new AWSRekognitionError(
+      'Invalid parameters provided to AWS Rekognition.',
+      error.code,
+      400
+    );
+  }
+  
+  if (error.code === 'AccessDeniedException') {
+    return new AWSRekognitionError(
+      'Access denied. Please check your AWS credentials.',
+      error.code,
+      403
+    );
+  }
+  
+  if (error.code === 'ThrottlingException') {
+    return new AWSRekognitionError(
+      'AWS Rekognition rate limit exceeded. Please try again later.',
+      error.code,
+      429
+    );
+  }
+  
+  return new AWSRekognitionError(
+    error.message || 'Unknown AWS Rekognition error',
+    error.code,
+    error.statusCode
+  );
+};
