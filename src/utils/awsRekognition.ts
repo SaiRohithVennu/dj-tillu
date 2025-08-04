@@ -29,33 +29,65 @@ export class AWSRekognitionService {
     AWS.config.update({
       accessKeyId: import.meta.env.VITE_AWS_ACCESS_KEY_ID,
       secretAccessKey: import.meta.env.VITE_AWS_SECRET_ACCESS_KEY,
-      region: import.meta.env.VITE_AWS_REGION || 'us-east-1'
+      region: import.meta.env.VITE_AWS_REGION || 'us-west-2',
+      // Add CORS configuration for browser
+      httpOptions: {
+        timeout: 30000,
+        connectTimeout: 5000
+      },
+      maxRetries: 3,
+      retryDelayOptions: {
+        customBackoff: function(retryCount: number) {
+          return Math.pow(2, retryCount) * 100;
+        }
+      }
     });
 
     this.rekognition = new AWS.Rekognition();
     this.s3 = new AWS.S3();
+    
+    // Log configuration for debugging
+    console.log('🔧 AWS Config:', {
+      region: AWS.config.region,
+      hasAccessKey: !!import.meta.env.VITE_AWS_ACCESS_KEY_ID,
+      hasSecretKey: !!import.meta.env.VITE_AWS_SECRET_ACCESS_KEY
+    });
   }
 
   // Initialize S3 bucket for storing reference images
   async initializeBucket(): Promise<boolean> {
     try {
+      console.log('🔍 Checking if S3 bucket exists:', this.bucketName);
       // Check if bucket exists
       await this.s3.headBucket({ Bucket: this.bucketName }).promise();
       console.log('✅ AWS S3 bucket exists');
       return true;
     } catch (error) {
+      console.log('🔧 Bucket does not exist, attempting to create...');
       try {
         // Create bucket if it doesn't exist
-        await this.s3.createBucket({ 
+        const createParams: AWS.S3.CreateBucketRequest = {
           Bucket: this.bucketName,
-          CreateBucketConfiguration: {
-            LocationConstraint: AWS.config.region !== 'us-east-1' ? AWS.config.region : undefined
-          }
-        }).promise();
+        };
+        
+        // Only add LocationConstraint if not us-east-1
+        if (AWS.config.region && AWS.config.region !== 'us-east-1') {
+          createParams.CreateBucketConfiguration = {
+            LocationConstraint: AWS.config.region as AWS.S3.BucketLocationConstraint
+          };
+        }
+        
+        await this.s3.createBucket(createParams).promise();
         console.log('✅ AWS S3 bucket created');
         return true;
       } catch (createError) {
-        console.error('❌ Failed to create S3 bucket:', createError);
+        console.error('❌ Failed to create S3 bucket:', {
+          message: createError.message,
+          code: createError.code,
+          statusCode: createError.statusCode,
+          region: AWS.config.region,
+          bucketName: this.bucketName
+        });
         return false;
       }
     }

@@ -52,30 +52,43 @@ export const useAWSFaceRecognition = ({
       try {
         console.log('🔧 Initializing AWS Rekognition...');
         
+        // Add more detailed logging
+        console.log('🔍 AWS Environment Check:', {
+          hasAccessKey: !!import.meta.env.VITE_AWS_ACCESS_KEY_ID,
+          hasSecretKey: !!import.meta.env.VITE_AWS_SECRET_ACCESS_KEY,
+          region: import.meta.env.VITE_AWS_REGION,
+          eventId,
+          vipCount: vipPeople.length
+        });
+        
         // Initialize S3 bucket
         const bucketReady = await awsRekognition.initializeBucket();
         if (!bucketReady) {
-          throw new Error('Failed to initialize S3 bucket');
+          throw new Error('Failed to initialize S3 bucket - Check AWS credentials and permissions');
         }
 
         // Create collection for this event
         const collectionReady = await awsRekognition.createCollection(eventId);
         if (!collectionReady) {
-          throw new Error('Failed to create Rekognition collection');
+          throw new Error('Failed to create Rekognition collection - Check Rekognition permissions');
         }
 
         // Index VIP faces
         const facesIndexed = await awsRekognition.indexVIPFaces(eventId, vipPeople);
         if (!facesIndexed) {
-          throw new Error('Failed to index VIP faces');
+          throw new Error('Failed to index VIP faces - Check if photos are valid');
         }
 
         setIsInitialized(true);
         console.log('✅ AWS Rekognition initialized successfully');
 
       } catch (error: any) {
-        console.error('❌ AWS Rekognition initialization failed:', error);
-        setError(error.message);
+        console.error('❌ AWS Rekognition initialization failed:', {
+          message: error.message,
+          stack: error.stack,
+          code: error.code
+        });
+        setError(`AWS Error: ${error.message}`);
         setIsInitialized(false);
       }
     };
