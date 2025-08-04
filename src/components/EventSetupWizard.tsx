@@ -421,3 +421,5 @@ const EventSetupWizard: React.FC<EventSetupWizardProps> = ({ onComplete, onSkip 
 };
 
 export default EventSetupWizard;
+
+export { EventSetupWizard }
