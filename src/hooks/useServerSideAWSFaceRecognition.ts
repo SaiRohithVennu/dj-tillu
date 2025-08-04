@@ -1,276 +1,258 @@
-import { useState, useEffect, useCallback } from 'react';
-import { supabase } from '../utils/supabaseStorage';
+import { useState, useEffect, useRef } from 'react';
 
-interface FaceRecognitionResult {
-  faceId: string;
-  confidence: number;
-  boundingBox: {
-    width: number;
-    height: number;
-    left: number;
-    top: number;
-  };
-  personName?: string;
-  personRole?: string;
-}
-
-interface CrowdAnalytics {
-  totalFaces: number;
-  averageAge?: number;
-  genderDistribution?: {
-    male: number;
-    female: number;
-  };
-  emotions?: {
-    happy: number;
-    sad: number;
-    angry: number;
-    surprised: number;
-    disgusted: number;
-    fearful: number;
-    calm: number;
-  };
-}
-
-interface VIPRecognition {
-  personId: string;
+interface VIPPerson {
+  id: string;
   name: string;
   role: string;
-  confidence: number;
+  imageFile?: File;
+  imageUrl?: string;
   recognitionCount: number;
-  lastSeen: number;
-  shouldAnnounce: boolean;
+  lastSeen?: Date;
 }
 
-export const useServerSideAWSFaceRecognition = () => {
+interface UseServerSideAWSFaceRecognitionProps {
+  videoElement: HTMLVideoElement | null;
+  vipPeople: VIPPerson[];
+  eventId: string;
+  enabled: boolean;
+  onVIPRecognized: (person: VIPPerson) => void;
+}
+
+export const useServerSideAWSFaceRecognition = ({
+  videoElement,
+  vipPeople,
+  eventId,
+  enabled,
+  onVIPRecognized
+}: UseServerSideAWSFaceRecognitionProps) => {
   const [isInitialized, setIsInitialized] = useState(false);
-  const [isProcessing, setIsProcessing] = useState(false);
-  const [recognizedFaces, setRecognizedFaces] = useState<FaceRecognitionResult[]>([]);
-  const [crowdAnalytics, setCrowdAnalytics] = useState<CrowdAnalytics>({ totalFaces: 0 });
-  const [vipRecognitions, setVipRecognitions] = useState<VIPRecognition[]>([]);
+  const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const [recognizedPeople, setRecognizedPeople] = useState<VIPPerson[]>([]);
+  const [lastAnalysis, setLastAnalysis] = useState<Date | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [collectionId, setCollectionId] = useState<string>('');
+  const [crowdAnalysis, setCrowdAnalysis] = useState({
+    faceCount: 0,
+    emotions: [] as string[],
+    averageAge: 0,
+    dominantEmotion: 'neutral'
+  });
 
-  // Initialize AWS Rekognition collection
-  const initializeCollection = useCallback(async (eventId: string, vipPeople: any[]) => {
-    try {
-      setIsProcessing(true);
-      setError(null);
-
-      const newCollectionId = `event-${eventId}-${Date.now()}`;
-      
-      console.log('🔧 Initializing AWS Rekognition collection:', newCollectionId);
-      console.log('👥 VIP People to index:', vipPeople.length);
-
-      // Call Supabase Edge Function to initialize collection
-      const { data, error: functionError } = await supabase.functions.invoke('aws-face-recognition', {
-        body: {
-          action: 'initialize',
-          collectionId: newCollectionId,
-          vipPeople: vipPeople.map(person => ({
-            id: person.id,
-            name: person.name,
-            role: person.role,
-            imageFile: person.imageFile ? await fileToBase64(person.imageFile) : null
-          }))
-        }
-      });
-
-      if (functionError) {
-        throw new Error(`Failed to initialize collection: ${functionError.message}`);
-      }
-
-      if (data?.success) {
-        setCollectionId(newCollectionId);
-        setIsInitialized(true);
-        console.log('✅ AWS Rekognition collection initialized successfully');
-        console.log('📊 Indexed faces:', data.indexedFaces || 0);
-      } else {
-        throw new Error(data?.error || 'Unknown error during initialization');
-      }
-
-    } catch (err) {
-      console.error('❌ Failed to initialize AWS Rekognition:', err);
-      setError(err instanceof Error ? err.message : 'Failed to initialize face recognition');
-    } finally {
-      setIsProcessing(false);
-    }
-  }, []);
-
-  // Process video frame for face recognition
-  const processFrame = useCallback(async (videoElement: HTMLVideoElement) => {
-    if (!isInitialized || isProcessing || !collectionId) {
-      return;
-    }
-
-    try {
-      setIsProcessing(true);
-      setError(null);
-
-      // Capture frame from video
-      const canvas = document.createElement('canvas');
-      const ctx = canvas.getContext('2d');
-      if (!ctx) return;
-
-      canvas.width = videoElement.videoWidth;
-      canvas.height = videoElement.videoHeight;
-      ctx.drawImage(videoElement, 0, 0);
-
-      // Convert to base64
-      const imageData = canvas.toDataURL('image/jpeg', 0.8);
-      const base64Data = imageData.split(',')[1];
-
-      // Call Supabase Edge Function for face recognition
-      const { data, error: functionError } = await supabase.functions.invoke('aws-face-recognition', {
-        body: {
-          action: 'recognize',
-          collectionId,
-          imageData: base64Data
-        }
-      });
-
-      if (functionError) {
-        throw new Error(`Recognition failed: ${functionError.message}`);
-      }
-
-      if (data?.success) {
-        // Update recognized faces
-        setRecognizedFaces(data.faces || []);
-        
-        // Update crowd analytics
-        setCrowdAnalytics({
-          totalFaces: data.totalFaces || 0,
-          averageAge: data.averageAge,
-          genderDistribution: data.genderDistribution,
-          emotions: data.emotions
-        });
-
-        // Process VIP recognitions
-        if (data.vipMatches && data.vipMatches.length > 0) {
-          const currentTime = Date.now();
-          
-          setVipRecognitions(prev => {
-            const updated = [...prev];
-            
-            data.vipMatches.forEach((match: any) => {
-              const existingIndex = updated.findIndex(v => v.personId === match.personId);
-              
-              if (existingIndex >= 0) {
-                // Update existing recognition
-                const existing = updated[existingIndex];
-                const timeSinceLastSeen = currentTime - existing.lastSeen;
-                
-                updated[existingIndex] = {
-                  ...existing,
-                  confidence: match.confidence,
-                  recognitionCount: existing.recognitionCount + 1,
-                  lastSeen: currentTime,
-                  // Only announce if it's been more than 5 minutes since last announcement
-                  shouldAnnounce: timeSinceLastSeen > 5 * 60 * 1000
-                };
-              } else {
-                // New recognition
-                updated.push({
-                  personId: match.personId,
-                  name: match.name,
-                  role: match.role,
-                  confidence: match.confidence,
-                  recognitionCount: 1,
-                  lastSeen: currentTime,
-                  shouldAnnounce: true
-                });
-              }
-            });
-            
-            return updated;
-          });
-        }
-
-        console.log('🎯 Face recognition completed:', {
-          totalFaces: data.totalFaces,
-          vipMatches: data.vipMatches?.length || 0
-        });
-
-      } else {
-        console.warn('⚠️ Face recognition returned no data');
-      }
-
-    } catch (err) {
-      console.error('❌ Face recognition error:', err);
-      setError(err instanceof Error ? err.message : 'Face recognition failed');
-    } finally {
-      setIsProcessing(false);
-    }
-  }, [isInitialized, isProcessing, collectionId]);
-
-  // Mark VIP as announced (to prevent spam)
-  const markVIPAsAnnounced = useCallback((personId: string) => {
-    setVipRecognitions(prev =>
-      prev.map(vip =>
-        vip.personId === personId
-          ? { ...vip, shouldAnnounce: false }
-          : vip
-      )
-    );
-  }, []);
-
-  // Get VIPs that should be announced
-  const getVIPsToAnnounce = useCallback(() => {
-    return vipRecognitions.filter(vip => vip.shouldAnnounce && vip.confidence > 0.75);
-  }, [vipRecognitions]);
-
-  // Cleanup collection when component unmounts
-  const cleanup = useCallback(async () => {
-    if (collectionId) {
-      try {
-        await supabase.functions.invoke('aws-face-recognition', {
-          body: {
-            action: 'cleanup',
-            collectionId
-          }
-        });
-        console.log('🧹 AWS Rekognition collection cleaned up');
-      } catch (err) {
-        console.error('❌ Failed to cleanup collection:', err);
-      }
-    }
-  }, [collectionId]);
+  const intervalRef = useRef<NodeJS.Timeout>();
+  const initializationRef = useRef<boolean>(false);
 
   // Helper function to convert File to base64
   const fileToBase64 = (file: File): Promise<string> => {
     return new Promise((resolve, reject) => {
       const reader = new FileReader();
-      reader.readAsDataURL(file);
       reader.onload = () => {
         const result = reader.result as string;
-        resolve(result.split(',')[1]); // Remove data:image/jpeg;base64, prefix
+        // Remove data URL prefix to get just the base64 data
+        const base64 = result.split(',')[1];
+        resolve(base64);
       };
-      reader.onerror = error => reject(error);
+      reader.onerror = reject;
+      reader.readAsDataURL(file);
     });
   };
+
+  // Initialize server-side AWS face recognition
+  useEffect(() => {
+    const initialize = async () => {
+      if (initializationRef.current || !vipPeople.length || !enabled) return;
+      
+      initializationRef.current = true;
+      setError(null);
+
+      try {
+        console.log('🔧 Initializing server-side AWS face recognition...');
+        
+        // Convert VIP photos to base64 for server processing
+        const vipData = await Promise.all(vipPeople.map(async (person) => ({
+          id: person.id,
+          name: person.name,
+          role: person.role,
+          imageData: person.imageFile ? await fileToBase64(person.imageFile) : null
+        })));
+
+        // Call Supabase Edge Function to initialize AWS services
+        const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+        const response = await fetch(`${supabaseUrl}/functions/v1/aws-face-recognition`, {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            action: 'initialize',
+            eventId,
+            vipPeople: vipData.filter(person => person.imageData) // Only include people with photos
+          })
+        });
+
+        if (!response.ok) {
+          const errorData = await response.json();
+          throw new Error(errorData.error || `Server error: ${response.status}`);
+        }
+
+        const result = await response.json();
+        
+        if (result.success) {
+          setIsInitialized(true);
+          console.log('✅ Server-side AWS face recognition initialized successfully');
+          console.log(`📊 Indexed ${result.vipCount} VIP faces`);
+        } else {
+          throw new Error(result.error || 'Initialization failed');
+        }
+
+      } catch (error: any) {
+        console.error('❌ Server-side AWS initialization failed:', error);
+        setError(error.message);
+        setIsInitialized(false);
+      }
+    };
+
+    if (vipPeople.length > 0 && enabled) {
+      initialize();
+    }
+  }, [vipPeople, eventId, enabled]);
+
+  // Main recognition loop
+  useEffect(() => {
+    if (!enabled || !isInitialized || !videoElement) {
+      return;
+    }
+
+    const runRecognition = async () => {
+      if (isAnalyzing) return;
+
+      setIsAnalyzing(true);
+      setError(null);
+
+      try {
+        // Capture current video frame
+        const canvas = document.createElement('canvas');
+        const ctx = canvas.getContext('2d');
+        if (!ctx) throw new Error('Canvas context not available');
+
+        canvas.width = videoElement.videoWidth;
+        canvas.height = videoElement.videoHeight;
+        ctx.drawImage(videoElement, 0, 0);
+        
+        // Convert to base64
+        const imageBase64 = canvas.toDataURL('image/jpeg', 0.8).split(',')[1];
+
+        // Call server-side recognition
+        const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+        const response = await fetch(`${supabaseUrl}/functions/v1/aws-face-recognition`, {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            action: 'recognize',
+            eventId,
+            imageData: imageBase64
+          })
+        });
+
+        if (!response.ok) {
+          const errorData = await response.json();
+          throw new Error(errorData.error || `Recognition error: ${response.status}`);
+        }
+
+        const result = await response.json();
+
+        if (result.success) {
+          // Update crowd analysis
+          setCrowdAnalysis(result.crowdAnalysis);
+
+          // Process VIP matches
+          for (const match of result.matches) {
+            if (match.confidence > 75) { // High confidence threshold
+              const vipPerson = vipPeople.find(p => p.id === match.personId);
+              if (vipPerson) {
+                const updatedPerson = {
+                  ...vipPerson,
+                  recognitionCount: (vipPerson.recognitionCount || 0) + 1,
+                  lastSeen: new Date()
+                };
+
+                setRecognizedPeople(prev => {
+                  const existing = prev.find(p => p.id === vipPerson.id);
+                  if (existing) {
+                    return prev.map(p => p.id === vipPerson.id ? updatedPerson : p);
+                  } else {
+                    return [...prev, updatedPerson];
+                  }
+                });
+
+                // Trigger recognition callback
+                onVIPRecognized(updatedPerson);
+                
+                console.log(`🎯 Server-side AWS: ${vipPerson.name} recognized with ${match.confidence.toFixed(1)}% confidence`);
+              }
+            }
+          }
+
+          setLastAnalysis(new Date());
+        }
+
+      } catch (error: any) {
+        console.error('❌ Server-side face recognition error:', error);
+        setError(error.message);
+      } finally {
+        setIsAnalyzing(false);
+      }
+    };
+
+    // Run recognition every 3 seconds
+    intervalRef.current = setInterval(runRecognition, 3000);
+    
+    // Run immediately
+    runRecognition();
+
+    return () => {
+      if (intervalRef.current) {
+        clearInterval(intervalRef.current);
+      }
+    };
+  }, [enabled, isInitialized, videoElement, eventId, vipPeople, isAnalyzing]);
 
   // Cleanup on unmount
   useEffect(() => {
     return () => {
-      cleanup();
+      if (isInitialized) {
+        // Call cleanup endpoint
+        const cleanup = async () => {
+          try {
+            const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+            await fetch(`${supabaseUrl}/functions/v1/aws-face-recognition`, {
+              method: 'POST',
+              headers: {
+                'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify({
+                action: 'cleanup',
+                eventId
+              })
+            });
+          } catch (error) {
+            console.warn('Cleanup error:', error);
+          }
+        };
+        cleanup();
+      }
     };
-  }, [cleanup]);
+  }, [eventId, isInitialized]);
 
   return {
-    // State
     isInitialized,
-    isProcessing,
-    recognizedFaces,
-    crowdAnalytics,
-    vipRecognitions,
+    isAnalyzing,
+    recognizedPeople,
+    lastAnalysis,
     error,
-    collectionId,
-    
-    // Actions
-    initializeCollection,
-    processFrame,
-    markVIPAsAnnounced,
-    getVIPsToAnnounce,
-    cleanup
+    crowdAnalysis
   };
 };
