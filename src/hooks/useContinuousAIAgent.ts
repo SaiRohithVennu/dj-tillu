@@ -1,6 +1,6 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef } from 'react';
 
-interface Person {
+interface VIPPerson {
   id: string;
   name: string;
   role: string;
@@ -8,215 +8,231 @@ interface Person {
   customGreeting?: string;
 }
 
-interface ContinuousAIAgentState {
-  isActive: boolean;
-  isAnalyzing: boolean;
-  lastAnnouncement: string;
-  announcementCount: number;
-  recognizedPeople: string[];
-  currentActivity: string;
-  error: string | null;
+interface EventDetails {
+  name: string;
+  type: string;
+  duration: number;
+  aiPersonality: string;
 }
 
-interface UseContinuousAIAgentReturn extends ContinuousAIAgentState {
-  startAgent: () => void;
-  stopAgent: () => void;
+interface RecognizedPerson {
+  name: string;
+  confidence: number;
+  timestamp: number;
+}
+
+interface UseContinuousAIAgentProps {
   videoRef: React.RefObject<HTMLVideoElement>;
+  vipPeople: VIPPerson[];
+  eventDetails: EventDetails;
+  onAnnouncement: (text: string, priority: 'high' | 'medium' | 'low') => void;
+  enabled: boolean;
 }
 
-export const useContinuousAIAgent = (
-  people: Person[] = [],
-  eventName: string = '',
-  personality: string = 'energetic'
-): UseContinuousAIAgentReturn => {
-  const [state, setState] = useState<ContinuousAIAgentState>({
-    isActive: false,
-    isAnalyzing: false,
-    lastAnnouncement: '',
-    announcementCount: 0,
-    recognizedPeople: [],
-    currentActivity: 'Waiting to start...',
-    error: null
+export const useContinuousAIAgent = ({
+  videoRef,
+  vipPeople,
+  eventDetails,
+  onAnnouncement,
+  enabled
+}: UseContinuousAIAgentProps) => {
+  const [isRunning, setIsRunning] = useState(false);
+  const [lastActivity, setLastActivity] = useState<string>('');
+  const [recognizedPeople, setRecognizedPeople] = useState<RecognizedPerson[]>([]);
+  const [agentStatus, setAgentStatus] = useState<'idle' | 'active' | 'analyzing'>('idle');
+  const [stats, setStats] = useState({
+    totalAnnouncements: 0,
+    lastAnnouncementTime: null as string | null
   });
 
-  const videoRef = useRef<HTMLVideoElement>(null);
-  const streamRef = useRef<MediaStream | null>(null);
-  const intervalRef = useRef<NodeJS.Timeout | null>(null);
-  const lastAnnouncementTime = useRef<number>(0);
-
-  // Initialize camera
-  const initializeCamera = useCallback(async () => {
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({ 
-        video: { width: 640, height: 480 },
-        audio: false 
-      });
-      
-      if (videoRef.current) {
-        videoRef.current.srcObject = stream;
-        streamRef.current = stream;
-      }
-      
-      setState(prev => ({ ...prev, error: null }));
-    } catch (error) {
-      console.error('Camera initialization failed:', error);
-      setState(prev => ({ 
-        ...prev, 
-        error: 'Camera access denied. Please allow camera permissions.' 
-      }));
-    }
-  }, []);
-
-  // Make periodic announcements
-  const makePeriodicAnnouncement = useCallback(async () => {
-    const now = Date.now();
-    const timeSinceLastAnnouncement = now - lastAnnouncementTime.current;
-    
-    // Make announcement every 2 minutes
-    if (timeSinceLastAnnouncement < 120000) return;
-
-    try {
-      setState(prev => ({ ...prev, isAnalyzing: true, currentActivity: 'Generating announcement...' }));
-
-      const announcements = [
-        `Welcome to ${eventName}! The energy in here is fantastic!`,
-        "I'm loving the vibe everyone! Keep the good times rolling!",
-        "This is your AI DJ speaking - hope everyone is having an amazing time!",
-        "The party is in full swing! Let's keep this energy going!",
-        "What an incredible crowd we have here tonight!",
-        "I can feel the excitement in the room - you all are amazing!"
-      ];
-
-      const randomAnnouncement = announcements[Math.floor(Math.random() * announcements.length)];
-      
-      // Dispatch announcement event for voice system
-      window.dispatchEvent(new CustomEvent('aiAnnouncement', {
-        detail: { message: randomAnnouncement, priority: 'medium' }
-      }));
-
-      setState(prev => ({
-        ...prev,
-        lastAnnouncement: randomAnnouncement,
-        announcementCount: prev.announcementCount + 1,
-        isAnalyzing: false,
-        currentActivity: 'Monitoring event...'
-      }));
-
-      lastAnnouncementTime.current = now;
-    } catch (error) {
-      console.error('Announcement generation failed:', error);
-      setState(prev => ({ 
-        ...prev, 
-        isAnalyzing: false,
-        currentActivity: 'Error generating announcement',
-        error: 'Failed to generate announcement' 
-      }));
-    }
-  }, [eventName]);
+  const analysisIntervalRef = useRef<NodeJS.Timeout>();
+  const lastAnalysisTime = useRef<number>(0);
 
   // Start the AI agent
-  const startAgent = useCallback(async () => {
-    if (state.isActive) return;
-
-    await initializeCamera();
+  const startAgent = () => {
+    if (!enabled) return;
     
-    setState(prev => ({ 
-      ...prev, 
-      isActive: true, 
-      currentActivity: 'Starting AI agent...',
-      error: null 
-    }));
-
-    // Welcome announcement
-    const welcomeMessage = `Hello everyone! Welcome to ${eventName}! I'm your AI DJ and I'm excited to be here with you all tonight!`;
-    
-    window.dispatchEvent(new CustomEvent('aiAnnouncement', {
-      detail: { message: welcomeMessage, priority: 'high' }
-    }));
-
-    setState(prev => ({
-      ...prev,
-      lastAnnouncement: welcomeMessage,
-      announcementCount: 1,
-      currentActivity: 'AI agent active - monitoring event'
-    }));
-
-    // Start periodic announcements
-    intervalRef.current = setInterval(makePeriodicAnnouncement, 30000); // Check every 30 seconds
-  }, [state.isActive, initializeCamera, makePeriodicAnnouncement, eventName]);
+    setIsRunning(true);
+    setAgentStatus('active');
+    console.log('🤖 Continuous AI Agent started');
+  };
 
   // Stop the AI agent
-  const stopAgent = useCallback(() => {
-    setState(prev => ({ 
-      ...prev, 
-      isActive: false, 
-      isAnalyzing: false,
-      currentActivity: 'AI agent stopped' 
-    }));
-
-    // Clear interval
-    if (intervalRef.current) {
-      clearInterval(intervalRef.current);
-      intervalRef.current = null;
+  const stopAgent = () => {
+    setIsRunning(false);
+    setAgentStatus('idle');
+    
+    if (analysisIntervalRef.current) {
+      clearInterval(analysisIntervalRef.current);
     }
+    
+    console.log('🤖 Continuous AI Agent stopped');
+  };
 
-    // Stop camera stream
-    if (streamRef.current) {
-      streamRef.current.getTracks().forEach(track => track.stop());
-      streamRef.current = null;
-    }
+  // Analyze video frame with OpenAI
+  const analyzeVideoFrame = async (): Promise<void> => {
+    if (!videoRef.current || !isRunning) return;
 
-    if (videoRef.current) {
-      videoRef.current.srcObject = null;
-    }
-  }, []);
+    const now = Date.now();
+    if (now - lastAnalysisTime.current < 5000) return; // Analyze every 5 seconds
 
-  // Cleanup on unmount
-  useEffect(() => {
-    return () => {
-      stopAgent();
-    };
-  }, [stopAgent]);
+    lastAnalysisTime.current = now;
+    setAgentStatus('analyzing');
 
-  // Listen for face recognition events
-  useEffect(() => {
-    const handleFaceRecognition = (event: CustomEvent) => {
-      const { personName } = event.detail;
+    try {
+      // Capture frame from video
+      const canvas = document.createElement('canvas');
+      const ctx = canvas.getContext('2d');
+      if (!ctx) return;
+
+      const video = videoRef.current;
+      canvas.width = video.videoWidth;
+      canvas.height = video.videoHeight;
+      ctx.drawImage(video, 0, 0);
       
-      if (!state.recognizedPeople.includes(personName)) {
-        setState(prev => ({
-          ...prev,
-          recognizedPeople: [...prev.recognizedPeople, personName]
-        }));
+      const imageBase64 = canvas.toDataURL('image/jpeg', 0.8).split(',')[1];
 
-        // Find person details
-        const person = people.find(p => p.name === personName);
-        const greeting = person?.customGreeting || `Hey ${personName}! Great to see you here!`;
+      // Create analysis prompt for OpenAI
+      const vipNames = vipPeople.map(p => `${p.name} (${p.role})`).join(', ');
+      
+      const analysisPrompt = `You are an AI event host watching a live video feed at "${eventDetails.name}" (${eventDetails.type}). 
+
+ANALYZE THIS SCENE:
+1. Count visible people
+2. Describe what's happening (talking, dancing, presenting, etc.)
+3. Look for these VIP people: ${vipNames || 'none specified'}
+4. Determine if you should make an announcement
+
+EVENT CONTEXT:
+- Event: ${eventDetails.name}
+- Type: ${eventDetails.type}
+- AI Personality: ${eventDetails.aiPersonality}
+- VIPs to recognize: ${vipNames}
+
+RESPOND IN THIS FORMAT:
+People: [number]
+Activity: [what people are doing]
+VIP_Spotted: [name if you see them, or "none"]
+Should_Announce: [yes/no]
+Announcement: [what to say, or "none"]
+Priority: [high/medium/low]
+
+Example: "People: 3, Activity: having conversation, VIP_Spotted: Sarah Johnson, Should_Announce: yes, Announcement: Welcome our amazing CEO Sarah! Great to see you here!, Priority: high"`;
+
+      // Call OpenAI Vision API
+      const response = await fetch('https://api.openai.com/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${import.meta.env.VITE_OPENAI_API_KEY}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          model: 'gpt-4o-mini',
+          messages: [
+            {
+              role: 'user',
+              content: [
+                {
+                  type: 'text',
+                  text: analysisPrompt
+                },
+                {
+                  type: 'image_url',
+                  image_url: {
+                    url: `data:image/jpeg;base64,${imageBase64}`
+                  }
+                }
+              ]
+            }
+          ],
+          max_tokens: 300,
+          temperature: 0.7
+        })
+      });
+
+      if (!response.ok) {
+        throw new Error(`OpenAI API error: ${response.status}`);
+      }
+
+      const data = await response.json();
+      const analysisResult = data.choices[0].message.content;
+
+      // Parse the analysis
+      const peopleMatch = analysisResult.match(/People:\s*(\d+)/i);
+      const activityMatch = analysisResult.match(/Activity:\s*([^\n,]+)/i);
+      const vipMatch = analysisResult.match(/VIP_Spotted:\s*([^\n,]+)/i);
+      const shouldAnnounceMatch = analysisResult.match(/Should_Announce:\s*(yes|no)/i);
+      const announcementMatch = analysisResult.match(/Announcement:\s*([^\n]+)/i);
+      const priorityMatch = analysisResult.match(/Priority:\s*(high|medium|low)/i);
+
+      const peopleCount = peopleMatch ? parseInt(peopleMatch[1]) : 0;
+      const activity = activityMatch?.[1]?.trim() || 'general activity';
+      const vipSpotted = vipMatch?.[1]?.trim();
+      const shouldAnnounce = shouldAnnounceMatch?.[1] === 'yes';
+      const announcement = announcementMatch?.[1]?.trim();
+      const priority = (priorityMatch?.[1] as 'high' | 'medium' | 'low') || 'medium';
+
+      setLastActivity(activity);
+
+      // Handle VIP recognition
+      if (vipSpotted && vipSpotted !== 'none') {
+        const recognizedPerson: RecognizedPerson = {
+          name: vipSpotted,
+          confidence: 85, // Simulated confidence
+          timestamp: now
+        };
+
+        setRecognizedPeople(prev => {
+          const existing = prev.find(p => p.name === vipSpotted);
+          if (!existing) {
+            return [...prev, recognizedPerson];
+          }
+          return prev;
+        });
+
+        console.log('🎯 VIP Recognized:', vipSpotted);
+      }
+
+      // Handle announcements
+      if (shouldAnnounce && announcement && announcement !== 'none') {
+        onAnnouncement(announcement, priority);
         
-        // Announce recognition
-        window.dispatchEvent(new CustomEvent('aiAnnouncement', {
-          detail: { message: greeting, priority: 'high' }
+        setStats(prev => ({
+          totalAnnouncements: prev.totalAnnouncements + 1,
+          lastAnnouncementTime: new Date().toLocaleTimeString()
         }));
 
-        setState(prev => ({
-          ...prev,
-          lastAnnouncement: greeting,
-          announcementCount: prev.announcementCount + 1
-        }));
+        console.log('🎤 AI Announcement:', announcement);
+      }
+
+      setAgentStatus('active');
+
+    } catch (error) {
+      console.error('🤖 AI Agent analysis error:', error);
+      setAgentStatus('active'); // Continue running despite errors
+    }
+  };
+
+  // Main analysis loop
+  useEffect(() => {
+    if (!isRunning || !enabled) return;
+
+    analysisIntervalRef.current = setInterval(analyzeVideoFrame, 2000);
+
+    return () => {
+      if (analysisIntervalRef.current) {
+        clearInterval(analysisIntervalRef.current);
       }
     };
-
-    window.addEventListener('faceRecognized', handleFaceRecognition as EventListener);
-    
-    return () => {
-      window.removeEventListener('faceRecognized', handleFaceRecognition as EventListener);
-    };
-  }, [people, state.recognizedPeople]);
+  }, [isRunning, enabled, vipPeople, eventDetails]);
 
   return {
-    ...state,
     startAgent,
     stopAgent,
-    videoRef
+    isRunning,
+    lastActivity,
+    recognizedPeople,
+    agentStatus,
+    stats
   };
 };
