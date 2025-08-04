@@ -55,7 +55,11 @@ export const useSmartEventEmcee = ({
 
   // Initialize Gemini analyzer
   useEffect(() => {
-    const apiKey = 'AIzaSyDMtDDrtr8WLwUHpXnVkRVzN1s_4IkUsRo';
+    const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
+    if (!apiKey) {
+      console.error('🤖 Gemini API key not found. Please add VITE_GEMINI_API_KEY to your .env file');
+      return;
+    }
     analyzerRef.current = new GeminiVisionAnalyzer(apiKey);
   }, []);
 
@@ -190,7 +194,7 @@ Example: "People: 2, Mood: focused, Energy: 6, Activity: working at desk, Person
       };
 
       const response = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-lite-preview-06-17:generateContent?key=AIzaSyDMtDDrtr8WLwUHpXnVkRVzN1s_4IkUsRo`,
+        `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-lite-preview-06-17:generateContent?key=${import.meta.env.VITE_GEMINI_API_KEY}`,
         {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },

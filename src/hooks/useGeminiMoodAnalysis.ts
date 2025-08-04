@@ -32,7 +32,11 @@ export const useGeminiMoodAnalysis = (
 
   // Initialize Gemini analyzer
   useEffect(() => {
-    const apiKey = 'AIzaSyDMtDDrtr8WLwUHpXnVkRVzN1s_4IkUsRo';
+    const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
+    if (!apiKey) {
+      console.error('🤖 Gemini API key not found. Please add VITE_GEMINI_API_KEY to your .env file');
+      return;
+    }
     analyzerRef.current = new GeminiVisionAnalyzer(apiKey);
     console.log('🤖 Gemini: Analyzer initialized');
   }, []);
