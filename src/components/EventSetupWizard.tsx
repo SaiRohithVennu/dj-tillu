@@ -232,18 +232,66 @@ export const EventSetupWizard: React.FC<EventSetupWizardProps> = ({
 
             <div>
               <label className="block text-sm font-medium text-gray-300 mb-2">Event Duration</label>
-              <div className="flex items-center space-x-4">
-                <input
-                  type="range"
-                  min="1"
-                  max="12"
-                  value={setup.duration}
-                  onChange={(e) => setSetup(prev => ({ ...prev, duration: Number(e.target.value) }))}
-                  className="flex-1"
-                />
-                <span className="text-white font-mono bg-purple-600/30 px-3 py-1 rounded">
-                  {setup.duration} hours
-                </span>
+              <div className="space-y-3">
+                <div className="flex items-center space-x-4">
+                  <input
+                    type="number"
+                    min="1"
+                    max="999"
+                    value={Math.floor(setup.duration)}
+                    onChange={(e) => setSetup(prev => ({ ...prev, duration: Number(e.target.value) }))}
+                    className="w-20 bg-gray-800 border border-gray-600 rounded-lg px-3 py-2 text-white focus:border-purple-500 focus:outline-none text-center"
+                  />
+                  <select
+                    value={setup.duration >= 1 && setup.duration < 1 ? 'minutes' : 'hours'}
+                    onChange={(e) => {
+                      const isMinutes = e.target.value === 'minutes';
+                      const currentValue = Math.floor(setup.duration);
+                      setSetup(prev => ({ 
+                        ...prev, 
+                        duration: isMinutes ? Math.min(currentValue, 59) : Math.max(currentValue, 1)
+                      }));
+                    }}
+                    className="bg-gray-800 border border-gray-600 rounded-lg px-3 py-2 text-white focus:border-purple-500 focus:outline-none"
+                  >
+                    <option value="minutes">Minutes</option>
+                    <option value="hours">Hours</option>
+                  </select>
+                </div>
+                
+                {/* Quick Duration Presets */}
+                <div className="flex flex-wrap gap-2">
+                  {[
+                    { label: '5 min', value: 5/60 },
+                    { label: '15 min', value: 15/60 },
+                    { label: '30 min', value: 0.5 },
+                    { label: '1 hour', value: 1 },
+                    { label: '2 hours', value: 2 },
+                    { label: '4 hours', value: 4 },
+                    { label: '8 hours', value: 8 }
+                  ].map((preset) => (
+                    <button
+                      key={preset.label}
+                      onClick={() => setSetup(prev => ({ ...prev, duration: preset.value }))}
+                      className={`px-3 py-1 rounded text-xs transition-colors ${
+                        Math.abs(setup.duration - preset.value) < 0.01
+                          ? 'bg-purple-600 text-white'
+                          : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
+                      }`}
+                    >
+                      {preset.label}
+                    </button>
+                  ))}
+                </div>
+                
+                <div className="text-sm text-gray-400">
+                  Duration: {setup.duration < 1 
+                    ? `${Math.round(setup.duration * 60)} minutes` 
+                    : setup.duration === 1 
+                    ? '1 hour' 
+                    : `${setup.duration} hours`
+                  }
+                </div>
               </div>
             </div>
           </div>

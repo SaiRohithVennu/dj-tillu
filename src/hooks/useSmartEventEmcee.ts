@@ -82,35 +82,40 @@ export const useSmartEventEmcee = ({
   // Generate welcome message based on event type and personality
   const generateWelcomeMessage = (): string => {
     const { eventName, eventType, aiPersonality } = eventSetup;
+    const durationText = eventSetup.duration < 1 
+      ? `${Math.round(eventSetup.duration * 60)}-minute` 
+      : eventSetup.duration === 1 
+      ? 'one-hour' 
+      : `${eventSetup.duration}-hour`;
     
     const welcomeMessages = {
       humorous: {
-        birthday: `🎂 Welcome to ${eventName}! I'm your AI DJ and I promise not to embarrass anyone... much! Let's get this birthday party started!`,
-        corporate: `🏢 Welcome to ${eventName}! Don't worry, I won't tell HR about your dance moves! Let's make this corporate event actually fun!`,
-        wedding: `💒 Welcome to ${eventName}! Love is in the air, and so is my amazing playlist! Let's celebrate love and good music!`,
-        party: `🎉 Welcome to ${eventName}! I'm your AI DJ and I'm here to make sure everyone has a blast! Let's party!`,
-        conference: `🎤 Welcome to ${eventName}! I'm your AI host, and I promise to keep things lively between presentations!`
+        birthday: `🎂 Welcome to ${eventName}! I'm your AI DJ for this ${durationText} celebration and I promise not to embarrass anyone... much! Let's get this birthday party started!`,
+        corporate: `🏢 Welcome to ${eventName}! Don't worry, I won't tell HR about your dance moves during this ${durationText} event! Let's make this corporate gathering actually fun!`,
+        wedding: `💒 Welcome to ${eventName}! Love is in the air for this ${durationText} celebration, and so is my amazing playlist! Let's celebrate love and good music!`,
+        party: `🎉 Welcome to ${eventName}! I'm your AI DJ for this ${durationText} party and I'm here to make sure everyone has a blast! Let's party!`,
+        conference: `🎤 Welcome to ${eventName}! I'm your AI host for this ${durationText} conference, and I promise to keep things lively between presentations!`
       },
       formal: {
-        birthday: `🎂 Good evening, and welcome to ${eventName}. It is our pleasure to celebrate this special occasion with you.`,
-        corporate: `🏢 Welcome to ${eventName}. We are honored to have you join us for this important corporate gathering.`,
-        wedding: `💒 Welcome to ${eventName}. We are gathered here today to celebrate love and unity.`,
-        party: `🎉 Good evening, and welcome to ${eventName}. We hope you enjoy this wonderful celebration.`,
-        conference: `🎤 Welcome to ${eventName}. We look forward to an informative and engaging event.`
+        birthday: `🎂 Good evening, and welcome to ${eventName}. It is our pleasure to celebrate this special ${durationText} occasion with you.`,
+        corporate: `🏢 Welcome to ${eventName}. We are honored to have you join us for this important ${durationText} corporate gathering.`,
+        wedding: `💒 Welcome to ${eventName}. We are gathered here today for this ${durationText} celebration of love and unity.`,
+        party: `🎉 Good evening, and welcome to ${eventName}. We hope you enjoy this wonderful ${durationText} celebration.`,
+        conference: `🎤 Welcome to ${eventName}. We look forward to this informative and engaging ${durationText} event.`
       },
       energetic: {
-        birthday: `🎂 WELCOME TO ${eventName.toUpperCase()}! ARE YOU READY TO PARTY?! Let's make this birthday UNFORGETTABLE!`,
-        corporate: `🏢 WELCOME TO ${eventName.toUpperCase()}! Time to show everyone that corporate events can be AMAZING! Let's GO!`,
-        wedding: `💒 WELCOME TO ${eventName.toUpperCase()}! Love is in the air and the energy is ELECTRIC! Let's celebrate!`,
-        party: `🎉 WELCOME TO ${eventName.toUpperCase()}! The party starts NOW! Let's turn up the energy!`,
-        conference: `🎤 WELCOME TO ${eventName.toUpperCase()}! Get ready for an INCREDIBLE experience! Let's make it happen!`
+        birthday: `🎂 WELCOME TO ${eventName.toUpperCase()}! ARE YOU READY FOR THIS ${durationText.toUpperCase()} PARTY?! Let's make this birthday UNFORGETTABLE!`,
+        corporate: `🏢 WELCOME TO ${eventName.toUpperCase()}! Time to show everyone that ${durationText} corporate events can be AMAZING! Let's GO!`,
+        wedding: `💒 WELCOME TO ${eventName.toUpperCase()}! Love is in the air for this ${durationText.toUpperCase()} celebration and the energy is ELECTRIC! Let's celebrate!`,
+        party: `🎉 WELCOME TO ${eventName.toUpperCase()}! This ${durationText.toUpperCase()} party starts NOW! Let's turn up the energy!`,
+        conference: `🎤 WELCOME TO ${eventName.toUpperCase()}! Get ready for an INCREDIBLE ${durationText.toUpperCase()} experience! Let's make it happen!`
       },
       professional: {
-        birthday: `🎂 Welcome to ${eventName}. We are pleased to celebrate this milestone with you today.`,
-        corporate: `🏢 Welcome to ${eventName}. Thank you for joining us for this corporate event.`,
-        wedding: `💒 Welcome to ${eventName}. We are honored to witness this celebration of love.`,
-        party: `🎉 Welcome to ${eventName}. We hope you have an enjoyable evening with us.`,
-        conference: `🎤 Welcome to ${eventName}. We appreciate your attendance at today's conference.`
+        birthday: `🎂 Welcome to ${eventName}. We are pleased to celebrate this ${durationText} milestone with you today.`,
+        corporate: `🏢 Welcome to ${eventName}. Thank you for joining us for this ${durationText} corporate event.`,
+        wedding: `💒 Welcome to ${eventName}. We are honored to witness this ${durationText} celebration of love.`,
+        party: `🎉 Welcome to ${eventName}. We hope you have an enjoyable ${durationText} evening with us.`,
+        conference: `🎤 Welcome to ${eventName}. We appreciate your attendance at this ${durationText} conference.`
       }
     };
 
