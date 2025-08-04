@@ -31,7 +31,7 @@ interface VIPPerson {
 export class AWSRekognitionService {
   private rekognitionClient: RekognitionClient;
   private s3Client: S3Client;
-  private bucketName: string = 'dj-tillu-faces-' + Date.now(); // Unique bucket name
+  private bucketName: string = 'dj-tillu-rekognition-bucket'; // Fixed bucket name
 
   constructor() {
     const region = import.meta.env.VITE_AWS_REGION || 'us-west-2';
@@ -65,31 +65,21 @@ export class AWSRekognitionService {
   // Initialize S3 bucket for storing reference images
   async initializeBucket(): Promise<boolean> {
     try {
-      console.log('🔍 Checking if S3 bucket exists:', this.bucketName);
+      console.log('🔍 AWS S3: Checking if bucket exists:', this.bucketName);
       
       // Check if bucket exists
       await this.s3Client.send(new HeadBucketCommand({ Bucket: this.bucketName }));
-      console.log('✅ AWS S3 bucket exists');
+      console.log('✅ AWS S3: Bucket exists and accessible');
       return true;
     } catch (error: any) {
-      console.log('🔧 Bucket does not exist, attempting to create...');
-      try {
-        // Create bucket if it doesn't exist
-        const createCommand = new CreateBucketCommand({
-          Bucket: this.bucketName,
-        });
-        
-        await this.s3Client.send(createCommand);
-        console.log('✅ AWS S3 bucket created');
-        return true;
-      } catch (createError: any) {
-        console.error('❌ Failed to create S3 bucket:', {
-          message: createError.message,
-          code: createError.name,
-          bucketName: this.bucketName
-        });
-        return false;
-      }
+      console.error('❌ AWS S3: Cannot access bucket. Please create manually:', {
+        bucketName: this.bucketName,
+        error: error.message,
+        code: error.name
+      });
+      
+      // Return detailed error for manual bucket creation
+      throw new Error(`S3 bucket '${this.bucketName}' not accessible. Please create it manually in AWS Console with CORS configuration.`);
     }
   }
 
