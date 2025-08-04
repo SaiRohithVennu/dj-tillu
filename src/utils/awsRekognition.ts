@@ -72,14 +72,13 @@ export class AWSRekognitionService {
       console.log('✅ AWS S3: Bucket exists and accessible');
       return true;
     } catch (error: any) {
-      console.error('❌ AWS S3: Cannot access bucket. Please create manually:', {
+      console.error('❌ AWS S3: Cannot access bucket:', {
         bucketName: this.bucketName,
         error: error.message,
         code: error.name
       });
       
-      // Return detailed error for manual bucket creation
-      throw new Error(`S3 bucket '${this.bucketName}' not accessible. Please create it manually in AWS Console with CORS configuration.`);
+      throw new Error(`S3 bucket '${this.bucketName}' not accessible. Make sure CORS allows "http://localhost:5173" (without trailing slash).`);
     }
   }
 
