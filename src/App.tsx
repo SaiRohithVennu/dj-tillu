@@ -211,12 +211,13 @@ function App() {
     }, 3000); // Wait for announcement
   };
   useEffect(() => {
+    document.title = 'DJ Tillu - Live AI DJ Experience';
+  }, []);
+
   // Update crowd size from AWS face recognition
   useEffect(() => {
     setCrowdSize(awsFaceRecognition.crowdAnalysis.faceCount);
   }, [awsFaceRecognition.crowdAnalysis.faceCount]);
-    document.title = 'DJ Tillu - Live AI DJ Experience';
-  }, []);
 
   // Handle event setup completion
   const handleSetupComplete = (setup: EventSetup) => {
