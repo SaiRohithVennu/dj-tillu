@@ -1,100 +1,118 @@
-import * as wandb from 'wandb';
+import { init, log, finish } from 'wandb';
 
-export class WandbDJLogger {
+interface TrackMetadata {
+  title: string;
+  artist: string;
+  genre: string;
+  bpm: number;
+  duration: number;
+}
+
+interface MoodData {
+  mood: string;
+  confidence: number;
+  timestamp: number;
+}
+
+interface FaceRecognitionData {
+  personName: string;
+  confidence: number;
+  timestamp: number;
+}
+
+class WandbLogger {
   private initialized = false;
+  private projectName = 'ai-dj-system';
 
-  constructor() {
-    this.init();
-  }
-
-  private async init() {
+  async initialize() {
     try {
-      // Initialize wandb for DJ performance tracking
-      await wandb.init({
-        project: 'dj-tillu-performance',
-        name: `dj-session-${Date.now()}`,
-        config: {
-          environment: 'production',
-          version: '1.0.0'
-        }
-      });
-      this.initialized = true;
-      console.log('WandB DJ Logger initialized successfully');
+      if (!this.initialized) {
+        await init({
+          project: this.projectName,
+          name: `dj-session-${Date.now()}`,
+          config: {
+            system: 'AI DJ System',
+            version: '1.0.0'
+          }
+        });
+        this.initialized = true;
+        console.log('WandB logging initialized');
+      }
     } catch (error) {
-      console.warn('WandB initialization failed:', error);
-      this.initialized = false;
+      console.warn('Failed to initialize WandB:', error);
     }
   }
 
-  logTrackPlay(track: any) {
-    if (!this.initialized) return;
-    
+  async logTrackPlay(track: TrackMetadata) {
     try {
-      wandb.log({
-        event: 'track_played',
+      if (!this.initialized) await this.initialize();
+      
+      await log({
+        event: 'track_play',
         track_title: track.title,
-        artist: track.artist,
-        genre: track.genre,
-        bpm: track.bpm,
-        duration: track.duration,
-        timestamp: new Date().toISOString()
+        track_artist: track.artist,
+        track_genre: track.genre,
+        track_bpm: track.bpm,
+        track_duration: track.duration,
+        timestamp: Date.now()
       });
     } catch (error) {
       console.warn('Failed to log track play:', error);
     }
   }
 
-  logMoodChange(mood: string, confidence: number) {
-    if (!this.initialized) return;
-    
+  async logMoodChange(moodData: MoodData) {
     try {
-      wandb.log({
+      if (!this.initialized) await this.initialize();
+      
+      await log({
         event: 'mood_change',
-        mood: mood,
-        confidence: confidence,
-        timestamp: new Date().toISOString()
+        mood: moodData.mood,
+        confidence: moodData.confidence,
+        timestamp: moodData.timestamp
       });
     } catch (error) {
       console.warn('Failed to log mood change:', error);
     }
   }
 
-  logFaceRecognition(personName: string, confidence: number) {
-    if (!this.initialized) return;
-    
+  async logFaceRecognition(faceData: FaceRecognitionData) {
     try {
-      wandb.log({
-        event: 'face_recognized',
-        person: personName,
-        confidence: confidence,
-        timestamp: new Date().toISOString()
+      if (!this.initialized) await this.initialize();
+      
+      await log({
+        event: 'face_recognition',
+        person_name: faceData.personName,
+        confidence: faceData.confidence,
+        timestamp: faceData.timestamp
       });
     } catch (error) {
       console.warn('Failed to log face recognition:', error);
     }
   }
 
-  logDJAction(action: string, details: any = {}) {
-    if (!this.initialized) return;
-    
+  async logDJAction(action: string, metadata: Record<string, any> = {}) {
     try {
-      wandb.log({
+      if (!this.initialized) await this.initialize();
+      
+      await log({
         event: 'dj_action',
-        action: action,
-        details: details,
-        timestamp: new Date().toISOString()
+        action,
+        ...metadata,
+        timestamp: Date.now()
       });
     } catch (error) {
       console.warn('Failed to log DJ action:', error);
     }
   }
 
-  async finish() {
-    if (!this.initialized) return;
-    
+  async finishSession() {
     try {
-      await wandb.finish();
-      console.log('WandB DJ Logger session finished');
+      if (this.initialized) {
+        await finish();
+        this.initialized = false;
+        console.log('WandB session finished');
+      }
     } catch (error) {
       console.warn('Failed to finish WandB session:', error);
     }
@@ -102,4 +120,4 @@ export class WandbDJLogger {
 }
 
 // Export singleton instance
-export const djLogger = new WandbDJLogger();
+export const wandbLogger = new WandbLogger();
