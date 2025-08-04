@@ -104,7 +104,15 @@ export const useServerSideAWSFaceRecognition = ({
               // Trigger recognition callback
               onVIPRecognized(updatedPerson);
               
-              console.log(`🎯 Server-side AWS: ${vipPerson.name} recognized with ${match.confidence.toFixed(1)}% confidence`);
+              console.log(`🎯 FACE RECOGNIZED: ${vipPerson.name} detected with ${match.confidence.toFixed(1)}% confidence!`);
+              
+              // Show browser notification for successful recognition
+              if ('Notification' in window && Notification.permission === 'granted') {
+                new Notification(`🎯 VIP Detected!`, {
+                  body: `${vipPerson.name} (${vipPerson.role}) recognized with ${match.confidence.toFixed(1)}% confidence`,
+                  icon: vipPerson.imageUrl
+                });
+              }
             }
           }
         }

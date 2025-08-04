@@ -361,8 +361,11 @@ export const EventSetupWizard: React.FC<EventSetupWizardProps> = ({
                             <img
                               src={person.imageUrl}
                               alt={person.name}
-                              className="w-full h-32 object-cover rounded-lg"
+                              className="w-full h-32 object-cover rounded-lg border-2 border-green-500/50"
                             />
+                            <div className="absolute top-1 left-1 bg-green-500 text-white text-xs px-1 rounded">
+                              ✅ Ready for Recognition
+                            </div>
                             <button
                               onClick={() => updateVIPPerson(person.id, { imageFile: undefined, imageUrl: undefined })}
                               className="absolute top-2 right-2 w-6 h-6 bg-red-500 rounded-full flex items-center justify-center text-white text-xs"

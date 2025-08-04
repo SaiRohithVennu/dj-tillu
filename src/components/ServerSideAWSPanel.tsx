@@ -193,11 +193,11 @@ export const ServerSideAWSPanel: React.FC<ServerSideAWSPanelProps> = ({
                         <div className="flex items-center space-x-1">
                           <CheckCircle className="w-4 h-4 text-green-400" />
                           <span className="text-xs text-green-300">
-                            {recognized.recognitionCount}x
+                            ✅ Recognized {recognized.recognitionCount}x
                           </span>
                         </div>
                       ) : (
-                        <span className="text-xs text-gray-500">Not detected</span>
+                        <span className="text-xs text-gray-500">👁️ Scanning...</span>
                       )}
                       {recognized?.lastSeen && (
                         <p className="text-xs text-gray-400 mt-1">
