@@ -59,21 +59,21 @@ export const EventSetupWizard: React.FC<EventSetupWizardProps> = ({
       label: 'Formal Host', 
       icon: '🎩', 
       description: 'Professional and elegant announcements',
-      example: '"Ladies and gentlemen, please join me in welcoming our distinguished guest of honor."'
+      example: '"Ladies and gentlemen, please join me in welcoming our distinguished CEO, Mr. Johnson."'
     },
     { 
       value: 'energetic', 
       label: 'Energetic Emcee', 
       icon: '⚡', 
       description: 'High-energy, pump-up style announcements',
-      example: '"OH MY GOODNESS! The birthday superstar is in the house! Let\'s make some NOISE!"'
+      example: '"THE CEO IS HERE! Give it up for our amazing leader! Let\'s show them what ENERGY looks like!"'
     },
     { 
       value: 'professional', 
       label: 'Professional Host', 
       icon: '👔', 
       description: 'Corporate-friendly, clear announcements',
-      example: '"We are pleased to announce the arrival of our CEO. Please join me in extending a warm welcome."'
+      example: '"We are pleased to announce the arrival of our Chief Executive Officer. Please join me in extending a warm corporate welcome."'
     }
   ];
 

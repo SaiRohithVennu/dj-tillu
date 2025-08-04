@@ -307,27 +307,35 @@ Example: "People: 5, Mood: excited, Energy: 8, Activity: dancing, VIP_Spotted: J
     const announcements = {
       humorous: {
         cake_cutting: "🎂 Hold up everyone! It's cake time! Don't worry, I counted the candles - we're not telling anyone the real number!",
-        speech: "🎤 Looks like someone's got something to say! Everyone quiet down - this could be good!",
+        speech: "🎤 Looks like someone's got something important to say! Everyone quiet down - this could be good! Or at least pretend to listen!",
         dancing: "💃 Oh my! Look at those moves! The dance floor is officially ON FIRE!",
-        toast: "🥂 Glasses up everyone! Time for a toast! And remember, no crying in your champagne!"
+        toast: "🥂 Glasses up everyone! Time for a toast! And remember, no crying in your champagne!",
+        presentation: "📊 Time for the main event! Someone's about to show us some PowerPoint magic! Let's give them our attention!",
+        networking: "🤝 I see some serious networking happening! Don't forget to exchange those business cards!"
       },
       formal: {
         cake_cutting: "🎂 Ladies and gentlemen, we have reached the moment for the traditional cake cutting ceremony.",
-        speech: "🎤 We now have a special address. Please give your attention to our speaker.",
+        speech: "🎤 We now have a distinguished speaker ready to address the assembly. Please give them your full attention.",
         dancing: "💃 The dance floor is now active. Please join in the celebration.",
-        toast: "🥂 Please raise your glasses for a special toast."
+        toast: "🥂 Please raise your glasses for a special toast.",
+        presentation: "📊 We are now ready for our scheduled presentation. Please direct your attention to the speaker.",
+        networking: "🤝 This is an excellent opportunity for professional networking. Please feel free to introduce yourselves."
       },
       energetic: {
         cake_cutting: "🎂 CAKE TIME! CAKE TIME! Everyone gather around! This is the MOMENT we've been waiting for!",
-        speech: "🎤 SPEECH TIME! Everyone listen up! This is going to be AMAZING!",
+        speech: "🎤 SPEECH TIME! Everyone listen up! Our speaker is about to drop some KNOWLEDGE!",
         dancing: "💃 THE DANCE FLOOR IS ALIVE! Look at those INCREDIBLE moves! Keep it going!",
-        toast: "🥂 TOAST TIME! Glasses HIGH! Let's make this EPIC!"
+        toast: "🥂 TOAST TIME! Glasses HIGH! Let's make this EPIC!",
+        presentation: "📊 PRESENTATION TIME! Get ready for some AMAZING insights! This is going to be INCREDIBLE!",
+        networking: "🤝 NETWORKING TIME! Get out there and make those CONNECTIONS! Let's GO!"
       },
       professional: {
         cake_cutting: "🎂 We are now ready for the cake cutting ceremony. Please gather around.",
-        speech: "🎤 We have a speaker ready to address the group. Please give them your attention.",
+        speech: "🎤 We have a distinguished speaker ready to address the assembly. Please give them your undivided attention.",
         dancing: "💃 Dancing has commenced. Please feel free to join the celebration.",
-        toast: "🥂 Please prepare for a toast. Kindly raise your glasses."
+        toast: "🥂 Please prepare for a toast. Kindly raise your glasses.",
+        presentation: "📊 We are ready to begin our scheduled presentation. Please take your seats and give the speaker your attention.",
+        networking: "🤝 This is a designated networking period. Please take this opportunity to connect with your colleagues."
       }
     };
 
