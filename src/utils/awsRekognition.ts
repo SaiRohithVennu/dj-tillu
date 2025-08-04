@@ -1,4 +1,13 @@
-import AWS from 'aws-sdk';
+import { S3Client, CreateBucketCommand, HeadBucketCommand, PutObjectCommand } from '@aws-sdk/client-s3';
+import { 
+  RekognitionClient, 
+  CreateCollectionCommand, 
+  IndexFacesCommand, 
+  SearchFacesByImageCommand,
+  DetectFacesCommand,
+  DeleteCollectionCommand 
+} from '@aws-sdk/client-rekognition';
+import { fromEnv } from '@aws-sdk/credential-providers';
 
 interface FaceMatch {
   confidence: number;
@@ -20,37 +29,36 @@ interface VIPPerson {
 }
 
 export class AWSRekognitionService {
-  private rekognition: AWS.Rekognition;
-  private s3: AWS.S3;
-  private bucketName: string = 'dj-tillu-faces'; // We'll create this bucket
+  private rekognitionClient: RekognitionClient;
+  private s3Client: S3Client;
+  private bucketName: string = 'dj-tillu-faces-' + Date.now(); // Unique bucket name
 
   constructor() {
-    // Initialize AWS SDK
-    AWS.config.update({
+    const region = import.meta.env.VITE_AWS_REGION || 'us-west-2';
+    
+    // Use the new AWS SDK v3 with explicit credentials
+    const credentials = {
       accessKeyId: import.meta.env.VITE_AWS_ACCESS_KEY_ID,
       secretAccessKey: import.meta.env.VITE_AWS_SECRET_ACCESS_KEY,
-      region: import.meta.env.VITE_AWS_REGION || 'us-west-2',
-      // Add CORS configuration for browser
-      httpOptions: {
-        timeout: 30000,
-        connectTimeout: 5000
-      },
-      maxRetries: 3,
-      retryDelayOptions: {
-        customBackoff: function(retryCount: number) {
-          return Math.pow(2, retryCount) * 100;
-        }
-      }
+    };
+
+    this.s3Client = new S3Client({
+      region,
+      credentials,
+      forcePathStyle: true, // Important for browser compatibility
     });
 
-    this.rekognition = new AWS.Rekognition();
-    this.s3 = new AWS.S3();
+    this.rekognitionClient = new RekognitionClient({
+      region,
+      credentials,
+    });
     
     // Log configuration for debugging
     console.log('🔧 AWS Config:', {
-      region: AWS.config.region,
+      region,
       hasAccessKey: !!import.meta.env.VITE_AWS_ACCESS_KEY_ID,
-      hasSecretKey: !!import.meta.env.VITE_AWS_SECRET_ACCESS_KEY
+      hasSecretKey: !!import.meta.env.VITE_AWS_SECRET_ACCESS_KEY,
+      bucketName: this.bucketName
     });
   }
 
@@ -58,34 +66,26 @@ export class AWSRekognitionService {
   async initializeBucket(): Promise<boolean> {
     try {
       console.log('🔍 Checking if S3 bucket exists:', this.bucketName);
+      
       // Check if bucket exists
-      await this.s3.headBucket({ Bucket: this.bucketName }).promise();
+      await this.s3Client.send(new HeadBucketCommand({ Bucket: this.bucketName }));
       console.log('✅ AWS S3 bucket exists');
       return true;
-    } catch (error) {
+    } catch (error: any) {
       console.log('🔧 Bucket does not exist, attempting to create...');
       try {
         // Create bucket if it doesn't exist
-        const createParams: AWS.S3.CreateBucketRequest = {
+        const createCommand = new CreateBucketCommand({
           Bucket: this.bucketName,
-        };
+        });
         
-        // Only add LocationConstraint if not us-east-1
-        if (AWS.config.region && AWS.config.region !== 'us-east-1') {
-          createParams.CreateBucketConfiguration = {
-            LocationConstraint: AWS.config.region as AWS.S3.BucketLocationConstraint
-          };
-        }
-        
-        await this.s3.createBucket(createParams).promise();
+        await this.s3Client.send(createCommand);
         console.log('✅ AWS S3 bucket created');
         return true;
-      } catch (createError) {
+      } catch (createError: any) {
         console.error('❌ Failed to create S3 bucket:', {
           message: createError.message,
-          code: createError.code,
-          statusCode: createError.statusCode,
-          region: AWS.config.region,
+          code: createError.name,
           bucketName: this.bucketName
         });
         return false;
@@ -100,26 +100,27 @@ export class AWSRekognitionService {
     try {
       const key = `vip-photos/${person.id}-${person.name.replace(/\s+/g, '-')}.jpg`;
       
-      // Convert File to Buffer
+      // Convert File to ArrayBuffer
       const arrayBuffer = await person.imageFile.arrayBuffer();
-      const buffer = Buffer.from(arrayBuffer);
+      const uint8Array = new Uint8Array(arrayBuffer);
 
       // Upload to S3
-      await this.s3.upload({
+      const command = new PutObjectCommand({
         Bucket: this.bucketName,
         Key: key,
-        Body: buffer,
+        Body: uint8Array,
         ContentType: person.imageFile.type,
         Metadata: {
           personId: person.id,
           personName: person.name,
           personRole: person.role
         }
-      }).promise();
+      });
 
+      await this.s3Client.send(command);
       console.log(`✅ Uploaded VIP photo: ${person.name}`);
       return key;
-    } catch (error) {
+    } catch (error: any) {
       console.error(`❌ Failed to upload VIP photo for ${person.name}:`, error);
       return null;
     }
@@ -130,14 +131,15 @@ export class AWSRekognitionService {
     const collectionId = `event-${eventId}`;
     
     try {
-      await this.rekognition.createCollection({
+      const command = new CreateCollectionCommand({
         CollectionId: collectionId
-      }).promise();
+      });
       
+      await this.rekognitionClient.send(command);
       console.log(`✅ Created Rekognition collection: ${collectionId}`);
       return true;
     } catch (error: any) {
-      if (error.code === 'ResourceAlreadyExistsException') {
+      if (error.name === 'ResourceAlreadyExistsException') {
         console.log(`✅ Rekognition collection already exists: ${collectionId}`);
         return true;
       }
@@ -159,7 +161,7 @@ export class AWSRekognitionService {
         if (!s3Key) continue;
 
         // Index face in Rekognition
-        const result = await this.rekognition.indexFaces({
+        const command = new IndexFacesCommand({
           CollectionId: collectionId,
           Image: {
             S3Object: {
@@ -169,7 +171,9 @@ export class AWSRekognitionService {
           },
           ExternalImageId: person.id,
           DetectionAttributes: ['ALL']
-        }).promise();
+        });
+
+        const result = await this.rekognitionClient.send(command);
 
         if (result.FaceRecords && result.FaceRecords.length > 0) {
           console.log(`✅ Indexed face for ${person.name}`);
@@ -179,7 +183,7 @@ export class AWSRekognitionService {
       }
       
       return true;
-    } catch (error) {
+    } catch (error: any) {
       console.error('❌ Failed to index VIP faces:', error);
       return false;
     }
@@ -204,20 +208,21 @@ export class AWSRekognitionService {
         canvas.toBlob((blob) => resolve(blob!), 'image/jpeg', 0.8);
       });
 
-      // Convert blob to buffer
+      // Convert blob to Uint8Array
       const arrayBuffer = await blob.arrayBuffer();
-      const imageBuffer = Buffer.from(arrayBuffer);
+      const imageBytes = new Uint8Array(arrayBuffer);
 
       // Search faces in Rekognition collection
-      const result = await this.rekognition.searchFacesByImage({
+      const command = new SearchFacesByImageCommand({
         CollectionId: collectionId,
         Image: {
-          Bytes: imageBuffer
+          Bytes: imageBytes
         },
         FaceMatchThreshold: 70, // 70% confidence threshold
         MaxFaces: 10
-      }).promise();
+      });
 
+      const result = await this.rekognitionClient.send(command);
       const matches: FaceMatch[] = [];
 
       if (result.FaceMatches) {
@@ -241,7 +246,7 @@ export class AWSRekognitionService {
       }
 
       return matches;
-    } catch (error) {
+    } catch (error: any) {
       console.error('❌ Face recognition failed:', error);
       return [];
     }
@@ -269,15 +274,17 @@ export class AWSRekognitionService {
       });
 
       const arrayBuffer = await blob.arrayBuffer();
-      const imageBuffer = Buffer.from(arrayBuffer);
+      const imageBytes = new Uint8Array(arrayBuffer);
 
       // Detect faces with attributes
-      const result = await this.rekognition.detectFaces({
+      const command = new DetectFacesCommand({
         Image: {
-          Bytes: imageBuffer
+          Bytes: imageBytes
         },
         Attributes: ['ALL']
-      }).promise();
+      });
+
+      const result = await this.rekognitionClient.send(command);
 
       const emotions: string[] = [];
       const genders: string[] = [];
@@ -314,7 +321,7 @@ export class AWSRekognitionService {
         averageAge: faceCount > 0 ? totalAge / faceCount : 0,
         genders
       };
-    } catch (error) {
+    } catch (error: any) {
       console.error('❌ Face detection failed:', error);
       return {
         faceCount: 0,
@@ -330,13 +337,14 @@ export class AWSRekognitionService {
     const collectionId = `event-${eventId}`;
     
     try {
-      await this.rekognition.deleteCollection({
+      const command = new DeleteCollectionCommand({
         CollectionId: collectionId
-      }).promise();
+      });
       
+      await this.rekognitionClient.send(command);
       console.log(`✅ Deleted Rekognition collection: ${collectionId}`);
       return true;
-    } catch (error) {
+    } catch (error: any) {
       console.error('❌ Failed to delete collection:', error);
       return false;
     }

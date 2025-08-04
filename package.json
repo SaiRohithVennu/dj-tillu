@@ -10,6 +10,9 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@aws-sdk/client-rekognition": "^3.859.0",
+    "@aws-sdk/client-s3": "^3.859.0",
+    "@aws-sdk/credential-providers": "^3.859.0",
     "@supabase/supabase-js": "^2.50.5",
     "aws-sdk": "^2.1692.0",
     "lucide-react": "^0.344.0",
