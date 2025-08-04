@@ -1,243 +1,175 @@
-import { useState, useEffect, useRef } from 'react';
-import { Track } from '../data/tracks';
-import { openAIEventHost } from '../utils/openAIEventHost';
+import { useState, useEffect, useRef, useCallback } from 'react';
+import { analyzeVideoForEventHost } from '../utils/openAIEventHost';
+import { generateVoiceAnnouncement } from '../utils/elevenLabsVoice';
 
 interface VIPPerson {
-  id: string;
   name: string;
   role: string;
-  imageFile?: File;
-  imageUrl?: string;
-  greeting?: string;
-  recognitionCount: number;
-  lastSeen?: Date;
+  photo: string;
 }
 
-interface EventContext {
-  eventName: string;
-  eventType: 'birthday' | 'corporate' | 'wedding' | 'party' | 'conference';
-  duration: number;
-  aiPersonality: 'humorous' | 'formal' | 'energetic' | 'professional';
-  vipPeople: VIPPerson[];
-  startTime: Date;
-}
-
-interface AIDecision {
-  shouldAnnounce: boolean;
-  announcement?: string;
-  shouldChangeMusic: boolean;
-  suggestedTrack?: string;
-  priority: 'high' | 'medium' | 'low';
-  reasoning: string;
-}
-
-interface UseOpenAIEventHostProps {
-  eventContext: EventContext;
+interface EventHostState {
+  isActive: boolean;
+  isAnalyzing: boolean;
+  lastAnalysis: string;
   recognizedVIPs: VIPPerson[];
-  crowdSize: number;
-  tracks: Track[];
-  currentTrack: Track | null;
-  isPlaying: boolean;
-  onAnnouncement: (message: string) => void;
-  onTrackChange: (track: Track) => void;
-  enabled: boolean;
+  announcementHistory: string[];
+  crowdCount: number;
+  currentActivity: string;
+  eventPersonality: 'humorous' | 'formal' | 'energetic' | 'professional';
 }
 
-export const useOpenAIEventHost = ({
-  eventContext,
-  recognizedVIPs,
-  crowdSize,
-  tracks,
-  currentTrack,
-  isPlaying,
-  onAnnouncement,
-  onTrackChange,
-  enabled
-}: UseOpenAIEventHostProps) => {
-  const [isActive, setIsActive] = useState(false);
-  const [lastDecision, setLastDecision] = useState<AIDecision | null>(null);
-  const [decisionHistory, setDecisionHistory] = useState<AIDecision[]>([]);
-  const [isThinking, setIsThinking] = useState(false);
-  const [lastVIPAnnouncements, setLastVIPAnnouncements] = useState<Map<string, number>>(new Map());
+export const useOpenAIEventHost = (videoElement?: HTMLVideoElement) => {
+  const [state, setState] = useState<EventHostState>({
+    isActive: false,
+    isAnalyzing: false,
+    lastAnalysis: '',
+    recognizedVIPs: [],
+    announcementHistory: [],
+    crowdCount: 0,
+    currentActivity: 'unknown',
+    eventPersonality: 'humorous'
+  });
 
-  const intervalRef = useRef<NodeJS.Timeout>();
-  const lastDecisionTime = useRef<number>(0);
+  const analysisIntervalRef = useRef<NodeJS.Timeout>();
+  const vipPhotosRef = useRef<VIPPerson[]>([]);
 
-  // Start AI hosting
-  const startAI = () => {
-    if (!enabled) return;
+  const startHost = useCallback(() => {
+    setState(prev => ({ ...prev, isActive: true }));
     
-    setIsActive(true);
-    openAIEventHost.resetHistory();
-    console.log('🧠 OpenAI Event Host started');
-    
-    // Initial welcome announcement
-    const welcomeMessage = generateWelcomeMessage();
-    triggerAnnouncement(welcomeMessage, 'high');
-  };
-
-  // Stop AI hosting
-  const stopAI = () => {
-    setIsActive(false);
-    if (intervalRef.current) {
-      clearInterval(intervalRef.current);
+    // Start analysis loop
+    if (analysisIntervalRef.current) {
+      clearInterval(analysisIntervalRef.current);
     }
-    console.log('🧠 OpenAI Event Host stopped');
-  };
-
-  // Generate welcome message
-  const generateWelcomeMessage = (): string => {
-    const { eventName, eventType, aiPersonality } = eventContext;
     
-    const welcomeMessages = {
-      humorous: `🎉 Welcome to ${eventName}! I'm your AI host and I promise to keep things fun and only slightly embarrassing!`,
-      formal: `Good evening and welcome to ${eventName}. It is our pleasure to host this distinguished gathering.`,
-      energetic: `WELCOME TO ${eventName.toUpperCase()}! Are you ready for an AMAZING time? Let's get this party STARTED!`,
-      professional: `Welcome to ${eventName}. Thank you for joining us for this important ${eventType} event.`
-    };
-
-    return welcomeMessages[aiPersonality] || `Welcome to ${eventName}!`;
-  };
-
-  // Trigger announcement with priority
-  const triggerAnnouncement = (message: string, priority: 'high' | 'medium' | 'low' = 'medium') => {
-    // Dispatch event for voice system
-    window.dispatchEvent(new CustomEvent('aiAnnouncement', {
-      detail: { 
-        message, 
-        priority,
-        emotion: getEmotionFromPersonality(eventContext.aiPersonality)
+    analysisIntervalRef.current = setInterval(() => {
+      if (videoElement) {
+        performAnalysis();
       }
-    }));
+    }, 10000); // Analyze every 10 seconds
+  }, [videoElement]);
+
+  const stopHost = useCallback(() => {
+    setState(prev => ({ ...prev, isActive: false, isAnalyzing: false }));
     
-    // Also call the callback for immediate display
-    onAnnouncement(message);
-  };
-
-  // Get emotion from AI personality
-  const getEmotionFromPersonality = (personality: string): string => {
-    switch (personality) {
-      case 'humorous': return 'welcoming';
-      case 'formal': return 'professional';
-      case 'energetic': return 'excited';
-      case 'professional': return 'professional';
-      default: return 'welcoming';
+    if (analysisIntervalRef.current) {
+      clearInterval(analysisIntervalRef.current);
+      analysisIntervalRef.current = undefined;
     }
-  };
+  }, []);
 
-  // Handle immediate VIP announcement
-  const handleImmediateVIPAnnouncement = (vip: VIPPerson) => {
-    const now = Date.now();
-    const lastAnnouncement = lastVIPAnnouncements.get(vip.id) || 0;
-    
-    // Only announce if not announced in last 5 minutes
-    if (now - lastAnnouncement > 300000) {
-      const greeting = generateVIPGreeting(vip);
-      triggerAnnouncement(greeting, 'high');
+  const performAnalysis = useCallback(async () => {
+    if (!videoElement || state.isAnalyzing) return;
+
+    setState(prev => ({ ...prev, isAnalyzing: true }));
+
+    try {
+      // Capture frame from video
+      const canvas = document.createElement('canvas');
+      const ctx = canvas.getContext('2d');
+      if (!ctx) return;
+
+      canvas.width = videoElement.videoWidth;
+      canvas.height = videoElement.videoHeight;
+      ctx.drawImage(videoElement, 0, 0);
       
-      setLastVIPAnnouncements(prev => new Map(prev.set(vip.id, now)));
-      console.log(`🌟 VIP Announcement: ${vip.name}`);
-    }
-  };
+      const imageData = canvas.toDataURL('image/jpeg', 0.8);
 
-  // Generate VIP greeting
-  const generateVIPGreeting = (vip: VIPPerson): string => {
-    if (vip.greeting) {
-      return vip.greeting;
-    }
+      // Analyze with OpenAI
+      const analysis = await analyzeVideoForEventHost(
+        imageData,
+        vipPhotosRef.current,
+        state.eventPersonality
+      );
 
-    const { aiPersonality } = eventContext;
-    
-    const greetings = {
-      humorous: `Look who's here! Our amazing ${vip.role.toLowerCase()} ${vip.name} has arrived! Let's give them a warm welcome!`,
-      formal: `Please join me in welcoming our distinguished ${vip.role.toLowerCase()}, ${vip.name}.`,
-      energetic: `${vip.role.toUpperCase()} ALERT! ${vip.name} is HERE! Let's show them some ENERGY!`,
-      professional: `We welcome our ${vip.role.toLowerCase()}, ${vip.name}. Thank you for joining us today.`
-    };
+      setState(prev => ({
+        ...prev,
+        lastAnalysis: analysis.description,
+        crowdCount: analysis.crowdCount,
+        currentActivity: analysis.activity,
+        isAnalyzing: false
+      }));
 
-    return greetings[aiPersonality] || `Welcome ${vip.name}!`;
-  };
-
-  // Main AI decision loop
-  useEffect(() => {
-    if (!isActive || !enabled) return;
-
-    const makeAIDecision = async () => {
-      const now = Date.now();
-      const timeSinceLastDecision = now - lastDecisionTime.current;
-      
-      // Make decisions every 15 seconds
-      if (timeSinceLastDecision < 15000) return;
-
-      setIsThinking(true);
-      
-      try {
-        // Create crowd analysis
-        const crowdAnalysis = {
-          faceCount: crowdSize,
-          recognizedVIPs,
-          newArrivals: recognizedVIPs.filter(vip => {
-            const lastSeen = vip.lastSeen?.getTime() || 0;
-            return now - lastSeen < 30000; // New if seen in last 30 seconds
-          }),
-          crowdChange: crowdSize > 20 ? 'increasing' : crowdSize < 10 ? 'decreasing' : 'stable' as const
-        };
-
-        // Make AI decision
-        const decision = await openAIEventHost.makeEventDecision(
-          eventContext,
-          crowdAnalysis,
-          currentTrack?.title || null,
-          isPlaying
+      // Check for VIP recognition
+      if (analysis.recognizedVIPs && analysis.recognizedVIPs.length > 0) {
+        const newVIPs = analysis.recognizedVIPs.filter(
+          vip => !state.recognizedVIPs.some(existing => existing.name === vip.name)
         );
 
-        setLastDecision(decision);
-        setDecisionHistory(prev => [...prev.slice(-9), decision]);
-        lastDecisionTime.current = now;
+        if (newVIPs.length > 0) {
+          setState(prev => ({
+            ...prev,
+            recognizedVIPs: [...prev.recognizedVIPs, ...newVIPs]
+          }));
 
-        // Execute AI decision
-        if (decision.shouldAnnounce && decision.announcement) {
-          triggerAnnouncement(decision.announcement, decision.priority);
-        }
-
-        if (decision.shouldChangeMusic && decision.suggestedTrack && tracks.length > 0) {
-          // Find track matching suggestion
-          const suggestedTrack = tracks.find(track => 
-            track.genre.toLowerCase().includes(decision.suggestedTrack!.toLowerCase()) ||
-            track.title.toLowerCase().includes(decision.suggestedTrack!.toLowerCase())
-          );
-
-          if (suggestedTrack && suggestedTrack.id !== currentTrack?.id) {
-            onTrackChange(suggestedTrack);
+          // Generate announcement for new VIPs
+          for (const vip of newVIPs) {
+            await makeAnnouncement(`Welcome ${vip.name}, our ${vip.role}!`);
           }
         }
-
-        console.log('🧠 AI Decision:', decision);
-
-      } catch (error) {
-        console.error('🧠 AI decision error:', error);
-      } finally {
-        setIsThinking(false);
       }
-    };
 
-    // Run decision loop every 5 seconds (but only decide every 15 seconds)
-    intervalRef.current = setInterval(makeAIDecision, 5000);
+      // Make general announcements based on analysis
+      if (analysis.shouldAnnounce && analysis.announcement) {
+        await makeAnnouncement(analysis.announcement);
+      }
 
+    } catch (error) {
+      console.error('Analysis failed:', error);
+      setState(prev => ({ ...prev, isAnalyzing: false }));
+    }
+  }, [videoElement, state.isAnalyzing, state.eventPersonality, state.recognizedVIPs]);
+
+  const makeAnnouncement = useCallback(async (text: string) => {
+    try {
+      // Add to history
+      setState(prev => ({
+        ...prev,
+        announcementHistory: [...prev.announcementHistory, text].slice(-10) // Keep last 10
+      }));
+
+      // Generate voice announcement
+      await generateVoiceAnnouncement(text);
+
+      // Dispatch event for other components
+      window.dispatchEvent(new CustomEvent('voiceAnnouncement', {
+        detail: { text, timestamp: Date.now() }
+      }));
+
+    } catch (error) {
+      console.error('Announcement failed:', error);
+    }
+  }, []);
+
+  const setVIPPhotos = useCallback((vips: VIPPerson[]) => {
+    vipPhotosRef.current = vips;
+  }, []);
+
+  const setEventPersonality = useCallback((personality: EventHostState['eventPersonality']) => {
+    setState(prev => ({ ...prev, eventPersonality: personality }));
+  }, []);
+
+  const testVoiceSystem = useCallback(async () => {
+    await makeAnnouncement("Testing voice system - DJ Tillu is ready to rock!");
+  }, [makeAnnouncement]);
+
+  // Cleanup on unmount
+  useEffect(() => {
     return () => {
-      if (intervalRef.current) {
-        clearInterval(intervalRef.current);
+      if (analysisIntervalRef.current) {
+        clearInterval(analysisIntervalRef.current);
       }
     };
-  }, [isActive, enabled, eventContext, recognizedVIPs, crowdSize, currentTrack, isPlaying]);
+  }, []);
 
   return {
-    isActive,
-    startAI,
-    stopAI,
-    lastDecision,
-    decisionHistory,
-    isThinking,
-    handleImmediateVIPAnnouncement
+    ...state,
+    startHost,
+    stopHost,
+    performAnalysis,
+    makeAnnouncement,
+    setVIPPhotos,
+    setEventPersonality,
+    testVoiceSystem
   };
 };
