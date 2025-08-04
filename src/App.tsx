@@ -18,8 +18,8 @@ import { WhooshMoodBrowser } from './components/WhooshMoodBrowser';
 import { EventDetailsManager } from './components/EventDetailsManager';
 import { FaceRecognitionSystem } from './components/FaceRecognitionSystem';
 import { SmartEventDashboard } from './components/SmartEventDashboard';
-import { AWSFaceRecognitionPanel } from './components/AWSFaceRecognitionPanel';
-import { useAWSFaceRecognition } from './hooks/useAWSFaceRecognition';
+import { ServerSideAWSPanel } from './components/ServerSideAWSPanel';
+import { useServerSideAWSFaceRecognition } from './hooks/useServerSideAWSFaceRecognition';
 import { useAudioPlayer } from './hooks/useAudioPlayer';
 import { useGeminiMoodAnalysis } from './hooks/useGeminiMoodAnalysis';
 import { useAIMoodDJ } from './hooks/useAIMoodDJ';
@@ -155,7 +155,7 @@ function App() {
   });
 
   // AWS Face Recognition
-  const awsFaceRecognition = useAWSFaceRecognition({
+  const awsFaceRecognition = useServerSideAWSFaceRecognition({
     videoElement,
     vipPeople: eventSetup?.vipPeople || [],
     eventId,
@@ -367,13 +367,13 @@ function App() {
 
         {/* Face Recognition - Left side under Track Library */}
         <DraggablePanel
-          title="AWS Face Recognition"
+          title="Server-Side AWS Recognition"
           initialPosition={{ x: 20, y: 520 }}
           initialSize={{ width: 320, height: 280 }}
           className="z-40"
           accentColor="blue"
         >
-          <AWSFaceRecognitionPanel
+          <ServerSideAWSPanel
             isInitialized={awsFaceRecognition.isInitialized}
             isAnalyzing={awsFaceRecognition.isAnalyzing}
             recognizedPeople={awsFaceRecognition.recognizedPeople}
