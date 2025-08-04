@@ -17,12 +17,13 @@ import { SmartEventDashboard } from './components/SmartEventDashboard';
 import { ServerSideAWSPanel } from './components/ServerSideAWSPanel';
 import { OpenAIEventHostPanel } from './components/OpenAIEventHostPanel';
 import { useServerSideAWSFaceRecognition } from './hooks/useServerSideAWSFaceRecognition';
-import { useOpenAIEventHost } from './hooks/useOpenAIEventHost';
+import { useContinuousAIAgent } from './hooks/useContinuousAIAgent';
 import { useAudioPlayer } from './hooks/useAudioPlayer';
 import { useSmartEventDJ } from './hooks/useSmartEventDJ';
 import { useSmartEventEmcee } from './hooks/useSmartEventEmcee';
 import { Track } from './data/tracks';
 import { useTrackLibrary } from './hooks/useTrackLibrary';
+import { ContinuousAIAgentPanel } from './components/ContinuousAIAgentPanel';
 
 interface EventSetup {
   eventName: string;
@@ -144,8 +145,9 @@ function App() {
   // Simple state for announcements
   const [isAnnouncing, setIsAnnouncing] = useState(false);
 
-  // OpenAI Event Host (Central AI Brain)
-  const openAIHost = useOpenAIEventHost({
+  // Continuous AI Video Agent (Like ChatGPT Video Mode)
+  const aiAgent = useContinuousAIAgent({
+    videoElement,
     eventContext: eventSetup ? {
       eventName: eventSetup.eventName,
       eventType: eventSetup.eventType,
@@ -164,14 +166,12 @@ function App() {
       vipPeople: [],
       startTime: new Date()
     },
-    recognizedVIPs: awsFaceRecognition.recognizedPeople,
-    crowdSize,
     tracks: trackLibrary,
     currentTrack,
     isPlaying,
     onAnnouncement: triggerAnnouncement,
     onTrackChange: loadTrack,
-    enabled: isEventActive && eventSetup !== null
+    enabled: eventSetup !== null
   });
 
   // Smart Event Emcee (new enhanced system)
@@ -205,7 +205,7 @@ function App() {
     // Start smart emcee if event is configured
     if (eventSetup) {
       smartEmcee.startEvent();
-      openAIHost.startAI(); // Start the central AI brain
+      aiAgent.startAgent(); // Start the continuous AI video agent
       setIsAnnouncing(true);
     }
     
@@ -357,22 +357,24 @@ function App() {
 
         {/* Face Recognition - Left side under Track Library */}
         <DraggablePanel
-          title="🧠 OpenAI Event Host"
+          title="🎥 AI Video Agent"
           initialPosition={{ x: 20, y: 520 }}
           initialSize={{ width: 320, height: 280 }}
           className="z-40"
           accentColor="blue"
         >
-          <OpenAIEventHostPanel
-            isActive={openAIHost.isActive}
-            onStartAI={openAIHost.startAI}
-            onStopAI={openAIHost.stopAI}
-            lastDecision={openAIHost.lastDecision}
-            decisionHistory={openAIHost.decisionHistory}
-            isThinking={openAIHost.isThinking}
+          <ContinuousAIAgentPanel
+            isActive={aiAgent.isActive}
+            onStartAgent={aiAgent.startAgent}
+            onStopAgent={aiAgent.stopAgent}
+            isAnalyzing={aiAgent.isAnalyzing}
+            lastResponse={aiAgent.lastResponse}
+            responseHistory={aiAgent.responseHistory}
+            agentStatus={aiAgent.agentStatus}
+            error={aiAgent.error}
+            onForceAnalysis={aiAgent.forceAnalysis}
+            conversationHistory={aiAgent.conversationHistory}
             eventContext={eventSetup}
-            recognizedVIPs={awsFaceRecognition.recognizedPeople}
-            crowdSize={crowdSize}
           />
         </DraggablePanel>
 
@@ -415,7 +417,7 @@ function App() {
         </DraggablePanel>
 
         {/* Center - Now Playing (when track is selected and AI not active) */}
-        {currentTrack && !openAIHost.isActive && (
+        {currentTrack && !aiAgent.isActive && (
           <DraggablePanel
             title="Now Playing"
             initialPosition={{ x: window.innerWidth / 2 - 200, y: window.innerHeight / 2 - 150 }}
@@ -458,9 +460,9 @@ function App() {
         )}
 
         {/* OpenAI Event Host Panel (when active) */}
-        {openAIHost.isActive && (
+        {aiAgent.isActive && (
           <DraggablePanel
-            title="🧠 AI Event Host Active"
+            title="🎥 AI Video Agent Active"
             initialPosition={{ x: window.innerWidth / 2 - 200, y: window.innerHeight / 2 - 150 }}
             initialSize={{ width: 400, height: 350 }}
             className="z-50"
@@ -468,66 +470,60 @@ function App() {
           >
             <div className="text-center space-y-4">
               <div className="w-16 h-16 bg-gradient-to-r from-blue-500 to-purple-500 rounded-full flex items-center justify-center mx-auto">
-                <span className="text-2xl">🧠</span>
+                <span className="text-2xl">🎥</span>
               </div>
               
               <div>
-                <h3 className="text-xl font-bold text-white mb-2">OpenAI Event Host</h3>
+                <h3 className="text-xl font-bold text-white mb-2">AI Video Agent</h3>
                 <p className="text-gray-300 text-sm">{eventSetup?.eventName}</p>
               </div>
               
               <div className="bg-white/10 rounded-lg p-4">
                 <div className="grid grid-cols-3 gap-4 text-center text-sm">
                   <div>
-                    <div className="text-blue-300 font-bold text-lg">{awsFaceRecognition.recognizedPeople.length}</div>
-                    <div className="text-gray-400">VIPs Seen</div>
+                    <div className="text-blue-300 font-bold text-lg">{aiAgent.conversationHistory.length}</div>
+                    <div className="text-gray-400">Interactions</div>
                   </div>
                   <div>
                     <div className="text-green-300 font-bold text-lg">{crowdSize}</div>
                     <div className="text-gray-400">People Present</div>
                   </div>
                   <div>
-                    <div className="text-purple-300 font-bold text-lg">{openAIHost.decisionHistory.length}</div>
-                    <div className="text-gray-400">Decisions Made</div>
+                    <div className="text-purple-300 font-bold text-lg">{aiAgent.responseHistory.length}</div>
+                    <div className="text-gray-400">Responses</div>
                   </div>
                 </div>
               </div>
               
               <div className={`rounded-lg p-3 ${
-                openAIHost.isThinking ? 'bg-yellow-600/20' : 'bg-blue-600/20'
+                aiAgent.isAnalyzing ? 'bg-yellow-600/20' : 'bg-blue-600/20'
               }`}>
                 <div className="flex items-center justify-center space-x-2 mb-2">
                   <div className={`w-2 h-2 rounded-full animate-pulse ${
-                    openAIHost.isThinking ? 'bg-yellow-400' : 'bg-blue-400'
+                    aiAgent.isAnalyzing ? 'bg-yellow-400' : 'bg-blue-400'
                   }`}></div>
                   <span className={`font-medium text-sm ${
-                    openAIHost.isThinking ? 'text-yellow-300' : 'text-blue-300'
+                    aiAgent.isAnalyzing ? 'text-yellow-300' : 'text-blue-300'
                   }`}>
-                    {openAIHost.isThinking ? 'AI Thinking...' : 'AI Monitoring Event'}
+                    {aiAgent.isAnalyzing ? 'AI Watching & Thinking...' : 'AI Video Agent Active'}
                   </span>
                 </div>
-                {openAIHost.lastDecision && (
+                {aiAgent.lastResponse && (
                   <p className="text-xs text-gray-400 mt-1">
-                    Last Decision: {openAIHost.lastDecision.reasoning}
+                    Last Response: {aiAgent.lastResponse.reasoning}
                   </p>
                 )}
               </div>
               
-              {awsFaceRecognition.recognizedPeople.length > 0 && (
+              {aiAgent.conversationHistory.length > 0 && (
                 <div className="bg-green-600/20 rounded-lg p-3">
-                  <h4 className="text-sm font-medium text-green-300 mb-2">Recognized People:</h4>
+                  <h4 className="text-sm font-medium text-green-300 mb-2">Recent Interactions:</h4>
                   <div className="space-y-1">
-                    {awsFaceRecognition.recognizedPeople.slice(0, 3).map(person => (
-                      <div key={person.id} className="flex justify-between text-xs">
-                        <span className="text-white">{person.name}</span>
-                        <span className="text-green-300">{person.recognitionCount}x seen</span>
+                    {aiAgent.conversationHistory.slice(-3).map((interaction, index) => (
+                      <div key={index} className="text-xs">
+                        <span className="text-white">"{interaction.split(': ')[1]}"</span>
                       </div>
                     ))}
-                    {awsFaceRecognition.recognizedPeople.length > 3 && (
-                      <div className="text-xs text-gray-400 text-center">
-                        +{awsFaceRecognition.recognizedPeople.length - 3} more
-                      </div>
-                    )}
                   </div>
                 </div>
               )}
@@ -627,10 +623,10 @@ function App() {
 
 
         {/* AI Status Indicator */}
-        {(openAIHost.isActive || isEventActive) && (
+        {(aiAgent.isActive || isEventActive) && (
           <div className="absolute top-1/2 left-8 transform -translate-y-1/2 z-50">
             <div className={`px-4 py-2 rounded-full backdrop-blur-xl shadow-2xl border transition-all ${
-              openAIHost.isActive
+              aiAgent.isActive
                 ? 'bg-blue-500/30 border-blue-500/50'
                 : isEventActive
                 ? 'bg-purple-500/30 border-purple-500/50'
@@ -638,14 +634,14 @@ function App() {
             }`}>
               <div className="flex items-center space-x-2">
                 <div className={`w-2 h-2 rounded-full animate-pulse ${
-                  openAIHost.isActive ? 'bg-blue-400' :
+                  aiAgent.isActive ? 'bg-blue-400' :
                   isEventActive ? 'bg-purple-400' : 'bg-green-400'
                 }`}></div>
                 <span className={`font-semibold text-sm ${
-                  openAIHost.isActive ? 'text-blue-300' :
+                  aiAgent.isActive ? 'text-blue-300' :
                   isEventActive ? 'text-purple-300' : 'text-green-300'
                 }`}>
-                  {openAIHost.isActive ? 'OPENAI EVENT HOST ACTIVE' :
+                  {aiAgent.isActive ? 'AI VIDEO AGENT ACTIVE' :
                    isEventActive ? 'SMART EVENT ACTIVE' : 'AI DJ ACTIVE'}
                 </span>
               </div>
@@ -653,14 +649,14 @@ function App() {
           </div>
         )}
 
-        {/* OpenAI Host Status */}
-        {openAIHost.isActive && (
+        {/* AI Video Agent Status */}
+        {aiAgent.isActive && (
           <div className="absolute bottom-32 right-8 z-50">
             <div className="px-4 py-2 rounded-full bg-blue-500/30 border border-blue-500/50 backdrop-blur-xl shadow-2xl">
               <div className="flex items-center space-x-2">
                 <div className="w-2 h-2 bg-blue-400 rounded-full animate-pulse"></div>
                 <span className="text-blue-300 font-semibold text-sm">
-                  OPENAI HOST • {awsFaceRecognition.recognizedPeople.length} VIPs • {openAIHost.isThinking ? 'THINKING' : 'ACTIVE'}
+                  AI VIDEO AGENT • {aiAgent.conversationHistory.length} INTERACTIONS • {aiAgent.isAnalyzing ? 'WATCHING' : 'ACTIVE'}
                 </span>
               </div>
             </div>
