@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
-import { Track } from '../data/tracks';
 import { ContinuousAIVideoAgent } from '../utils/continuousAIAgent';
+import { Track } from '../data/tracks';
 
 interface VIPPerson {
   id: string;
@@ -47,41 +47,72 @@ export const useContinuousAIAgent = ({
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [lastResponse, setLastResponse] = useState<any>(null);
   const [responseHistory, setResponseHistory] = useState<any[]>([]);
-  const [error, setError] = useState<string | null>(null);
-  const [conversationHistory, setConversationHistory] = useState<string[]>([]);
   const [agentStatus, setAgentStatus] = useState<any>({});
+  const [error, setError] = useState<string | null>(null);
 
-  const aiAgentRef = useRef<ContinuousAIVideoAgent | null>(null);
+  const agentRef = useRef<ContinuousAIVideoAgent | null>(null);
   const intervalRef = useRef<NodeJS.Timeout>();
 
-  // Initialize AI agent
+  // Initialize the AI agent
   useEffect(() => {
     const openAIKey = import.meta.env.VITE_OPENAI_API_KEY;
     const geminiKey = import.meta.env.VITE_GEMINI_API_KEY;
 
     if (!openAIKey || !geminiKey) {
-      setError('Missing API keys. Please check your environment variables.');
+      setError('Missing API keys. Please add VITE_OPENAI_API_KEY and VITE_GEMINI_API_KEY to your .env file');
       return;
     }
 
-    aiAgentRef.current = new ContinuousAIVideoAgent(openAIKey, geminiKey);
+    agentRef.current = new ContinuousAIVideoAgent(openAIKey, geminiKey);
     console.log('🤖 Continuous AI Agent initialized');
   }, []);
 
-  // Main AI loop
-  useEffect(() => {
-    if (!isActive || !enabled || !videoElement || !aiAgentRef.current) {
+  // Start the agent
+  const startAgent = () => {
+    if (!agentRef.current || !videoElement) {
+      setError('Agent not ready or video not available');
       return;
     }
 
-    const runAIAnalysis = async () => {
+    agentRef.current.start(eventContext);
+    setIsActive(true);
+    setError(null);
+    
+    console.log('🎥 Starting continuous AI video agent...');
+    
+    // Welcome message
+    const welcomeMessage = `Hello everyone! I'm your AI host for ${eventContext.eventName}. I can see you through the camera and I'm here to make this ${eventContext.eventType} amazing!`;
+    setTimeout(() => {
+      onAnnouncement(welcomeMessage);
+    }, 2000);
+  };
+
+  // Stop the agent
+  const stopAgent = () => {
+    if (agentRef.current) {
+      agentRef.current.stop();
+    }
+    setIsActive(false);
+    if (intervalRef.current) {
+      clearInterval(intervalRef.current);
+    }
+    console.log('🤖 Continuous AI Agent stopped');
+  };
+
+  // Main analysis loop
+  useEffect(() => {
+    if (!isActive || !enabled || !videoElement || !agentRef.current) {
+      return;
+    }
+
+    const runContinuousAnalysis = async () => {
       if (isAnalyzing) return;
 
       setIsAnalyzing(true);
       setError(null);
 
       try {
-        const response = await aiAgentRef.current!.analyzeVideoAndRespond(videoElement);
+        const response = await agentRef.current!.analyzeVideoAndRespond(videoElement);
         
         if (response) {
           setLastResponse(response);
@@ -89,75 +120,62 @@ export const useContinuousAIAgent = ({
 
           // Execute AI decisions
           if (response.shouldSpeak && response.message) {
-            console.log('🎤 AI Agent triggered announcement:', response.message);
-            onAnnouncement(response.message);
-            
-            // Add to conversation history
-            setConversationHistory(prev => [
-              ...prev.slice(-9),
-              `${new Date().toLocaleTimeString()}: ${response.message}`
-            ]);
+            console.log('🎤 AI Agent speaking:', response.message);
+            setTimeout(() => {
+              onAnnouncement(response.message!);
+            }, 500);
           }
 
           if (response.shouldChangeMusic && response.suggestedMusicStyle && tracks.length > 0) {
-            const suggestedTrack = findTrackBySuggestion(response.suggestedMusicStyle);
+            const suggestedTrack = findTrackByStyle(response.suggestedMusicStyle);
             if (suggestedTrack && suggestedTrack.id !== currentTrack?.id) {
-              console.log('🎵 AI Agent suggested track change:', suggestedTrack.title);
+              console.log('🎵 AI Agent changing music:', suggestedTrack.title);
               setTimeout(() => {
                 onTrackChange(suggestedTrack);
-              }, 3000); // Wait for announcement to finish
+              }, 3000);
             }
           }
-        }
 
-        // Update agent status
-        if (aiAgentRef.current) {
-          setAgentStatus(aiAgentRef.current.getStatus());
+          // Update status
+          setAgentStatus(agentRef.current!.getStatus());
         }
 
       } catch (error: any) {
-        console.error('🤖 AI Agent error:', error);
+        console.error('🤖 Continuous AI analysis error:', error);
         setError(error.message);
       } finally {
         setIsAnalyzing(false);
       }
     };
 
-    // Run analysis every 4 seconds for natural interaction
-    intervalRef.current = setInterval(runAIAnalysis, 4000);
-    
-    // Run initial analysis after 2 seconds
-    setTimeout(runAIAnalysis, 2000);
+    // Run analysis every 3-5 seconds (like ChatGPT video)
+    const randomInterval = 3000 + Math.random() * 2000;
+    intervalRef.current = setInterval(runContinuousAnalysis, randomInterval);
+
+    // Run initial analysis after 3 seconds
+    setTimeout(runContinuousAnalysis, 3000);
 
     return () => {
       if (intervalRef.current) {
         clearInterval(intervalRef.current);
       }
     };
-  }, [isActive, enabled, videoElement, currentTrack, isPlaying, tracks]);
+  }, [isActive, enabled, videoElement, eventContext, tracks, currentTrack, isAnalyzing]);
 
-  // Find track based on AI suggestion
-  const findTrackBySuggestion = (suggestion: string): Track | null => {
-    const suggestionLower = suggestion.toLowerCase();
+  // Find track by AI suggestion
+  const findTrackByStyle = (style: string): Track | null => {
+    const styleLower = style.toLowerCase();
     
-    // Try to match by genre first
+    // Try to match by genre
     let matchedTrack = tracks.find(track => 
-      track.genre.toLowerCase().includes(suggestionLower)
+      track.genre.toLowerCase().includes(styleLower)
     );
 
-    // Try to match by title or artist
+    // Try to match by energy level
     if (!matchedTrack) {
-      matchedTrack = tracks.find(track => 
-        track.title.toLowerCase().includes(suggestionLower) ||
-        track.artist.toLowerCase().includes(suggestionLower)
-      );
-    }
-
-    // Try to match by BPM range for energy descriptions
-    if (!matchedTrack) {
-      if (suggestionLower.includes('high energy') || suggestionLower.includes('fast')) {
-        matchedTrack = tracks.find(track => track.bpm > 140);
-      } else if (suggestionLower.includes('slow') || suggestionLower.includes('chill')) {
+      if (styleLower.includes('high energy') || styleLower.includes('upbeat')) {
+        matchedTrack = tracks.find(track => track.bpm > 130);
+      } else if (styleLower.includes('chill') || styleLower.includes('slow')) {
         matchedTrack = tracks.find(track => track.bpm < 120);
       }
     }
@@ -170,45 +188,18 @@ export const useContinuousAIAgent = ({
     return matchedTrack || null;
   };
 
-  const startAgent = () => {
-    if (!aiAgentRef.current) {
-      setError('AI Agent not initialized');
-      return;
-    }
-
-    setIsActive(true);
-    aiAgentRef.current.start(eventContext);
-    setConversationHistory([]);
-    setResponseHistory([]);
-    console.log('🤖 Continuous AI Video Agent started');
-  };
-
-  const stopAgent = () => {
-    setIsActive(false);
-    if (aiAgentRef.current) {
-      aiAgentRef.current.stop();
-    }
-    if (intervalRef.current) {
-      clearInterval(intervalRef.current);
-    }
-    console.log('🤖 Continuous AI Video Agent stopped');
-  };
-
+  // Force analysis (for testing)
   const forceAnalysis = async () => {
-    if (!videoElement || !aiAgentRef.current || isAnalyzing) {
-      console.log('🤖 Cannot force analysis - not ready or already analyzing');
-      return;
-    }
+    if (!agentRef.current || !videoElement || isAnalyzing) return;
 
     setIsAnalyzing(true);
     try {
-      const response = await aiAgentRef.current.forceAnalysis(videoElement);
+      const response = await agentRef.current.forceAnalysis(videoElement);
       if (response) {
         setLastResponse(response);
-        console.log('🤖 Forced analysis complete:', response);
+        console.log('🔍 Forced analysis result:', response);
       }
     } catch (error: any) {
-      console.error('🤖 Forced analysis error:', error);
       setError(error.message);
     } finally {
       setIsAnalyzing(false);
@@ -225,6 +216,6 @@ export const useContinuousAIAgent = ({
     agentStatus,
     error,
     forceAnalysis,
-    conversationHistory
+    conversationHistory: agentRef.current?.getConversationSummary() || []
   };
 };
