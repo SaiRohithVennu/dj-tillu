@@ -106,12 +106,21 @@ export const useServerSideAWSFaceRecognition = ({
               
               console.log(`🎯 FACE RECOGNIZED: ${vipPerson.name} detected with ${match.confidence.toFixed(1)}% confidence!`);
               
-              // Show browser notification for successful recognition
-              if ('Notification' in window && Notification.permission === 'granted') {
-                new Notification(`🎯 VIP Detected!`, {
-                  body: `${vipPerson.name} (${vipPerson.role}) recognized with ${match.confidence.toFixed(1)}% confidence`,
-                  icon: vipPerson.imageUrl
-                });
+              // Trigger personalized announcement (only once per 5 minutes per person)
+              const now = Date.now();
+              const lastAnnouncementKey = `last_announcement_${vipPerson.id}`;
+              const lastAnnouncementTime = parseInt(localStorage.getItem(lastAnnouncementKey) || '0');
+              
+              if (now - lastAnnouncementTime > 300000) { // 5 minutes
+                localStorage.setItem(lastAnnouncementKey, now.toString());
+                
+                // Show browser notification for successful recognition
+                if ('Notification' in window && Notification.permission === 'granted') {
+                  new Notification(`🎯 VIP Detected!`, {
+                    body: `${vipPerson.name} (${vipPerson.role}) recognized with ${match.confidence.toFixed(1)}% confidence`,
+                    icon: vipPerson.imageUrl
+                  });
+                }
               }
             }
           }
