@@ -1,0 +1,407 @@
+import { useState, useEffect, useRef } from 'react';
+import { Track } from '../data/tracks';
+import { GeminiVisionAnalyzer } from '../utils/geminiVision';
+
+interface VIPPerson {
+  id: string;
+  name: string;
+  role: string;
+  imageFile?: File;
+  imageUrl?: string;
+  greeting?: string;
+  recognitionCount: number;
+  lastSeen?: Date;
+}
+
+interface EventSetup {
+  eventName: string;
+  eventType: 'birthday' | 'corporate' | 'wedding' | 'party' | 'conference';
+  duration: number;
+  vipPeople: VIPPerson[];
+  aiPersonality: 'humorous' | 'formal' | 'energetic' | 'professional';
+  specialMoments: string[];
+}
+
+interface SmartEventEmceeProps {
+  tracks: Track[];
+  videoElement: HTMLVideoElement | null;
+  eventSetup: EventSetup;
+  onTrackChange: (track: Track) => void;
+  onAnnouncement: (message: string) => void;
+  isPlaying: boolean;
+  currentTrack: Track | null;
+}
+
+export const useSmartEventEmcee = ({
+  tracks,
+  videoElement,
+  eventSetup,
+  onTrackChange,
+  onAnnouncement,
+  isPlaying,
+  currentTrack
+}: SmartEventEmceeProps) => {
+  const [isActive, setIsActive] = useState(false);
+  const [recognizedPeople, setRecognizedPeople] = useState<VIPPerson[]>([]);
+  const [currentMood, setCurrentMood] = useState('neutral');
+  const [currentEnergy, setCurrentEnergy] = useState(50);
+  const [crowdSize, setCrowdSize] = useState(0);
+  const [lastAnalysis, setLastAnalysis] = useState<Date | null>(null);
+  const [isAnalyzing, setIsAnalyzing] = useState(false);
+
+  const analyzerRef = useRef<GeminiVisionAnalyzer | null>(null);
+  const analysisIntervalRef = useRef<NodeJS.Timeout>();
+  const eventStartTime = useRef<Date | null>(null);
+
+  // Initialize Gemini analyzer
+  useEffect(() => {
+    const apiKey = 'AIzaSyDMtDDrtr8WLwUHpXnVkRVzN1s_4IkUsRo';
+    analyzerRef.current = new GeminiVisionAnalyzer(apiKey);
+  }, []);
+
+  // Start the smart event emcee
+  const startEvent = () => {
+    setIsActive(true);
+    eventStartTime.current = new Date();
+    
+    // Welcome announcement
+    const welcomeMessage = generateWelcomeMessage();
+    onAnnouncement(welcomeMessage);
+    
+    console.log('🎤 Smart Event Emcee started:', eventSetup.eventName);
+  };
+
+  const stopEvent = () => {
+    setIsActive(false);
+    if (analysisIntervalRef.current) {
+      clearInterval(analysisIntervalRef.current);
+    }
+    console.log('🎤 Smart Event Emcee stopped');
+  };
+
+  // Generate welcome message based on event type and personality
+  const generateWelcomeMessage = (): string => {
+    const { eventName, eventType, aiPersonality } = eventSetup;
+    
+    const welcomeMessages = {
+      humorous: {
+        birthday: `🎂 Welcome to ${eventName}! I'm your AI DJ and I promise not to embarrass anyone... much! Let's get this birthday party started!`,
+        corporate: `🏢 Welcome to ${eventName}! Don't worry, I won't tell HR about your dance moves! Let's make this corporate event actually fun!`,
+        wedding: `💒 Welcome to ${eventName}! Love is in the air, and so is my amazing playlist! Let's celebrate love and good music!`,
+        party: `🎉 Welcome to ${eventName}! I'm your AI DJ and I'm here to make sure everyone has a blast! Let's party!`,
+        conference: `🎤 Welcome to ${eventName}! I'm your AI host, and I promise to keep things lively between presentations!`
+      },
+      formal: {
+        birthday: `🎂 Good evening, and welcome to ${eventName}. It is our pleasure to celebrate this special occasion with you.`,
+        corporate: `🏢 Welcome to ${eventName}. We are honored to have you join us for this important corporate gathering.`,
+        wedding: `💒 Welcome to ${eventName}. We are gathered here today to celebrate love and unity.`,
+        party: `🎉 Good evening, and welcome to ${eventName}. We hope you enjoy this wonderful celebration.`,
+        conference: `🎤 Welcome to ${eventName}. We look forward to an informative and engaging event.`
+      },
+      energetic: {
+        birthday: `🎂 WELCOME TO ${eventName.toUpperCase()}! ARE YOU READY TO PARTY?! Let's make this birthday UNFORGETTABLE!`,
+        corporate: `🏢 WELCOME TO ${eventName.toUpperCase()}! Time to show everyone that corporate events can be AMAZING! Let's GO!`,
+        wedding: `💒 WELCOME TO ${eventName.toUpperCase()}! Love is in the air and the energy is ELECTRIC! Let's celebrate!`,
+        party: `🎉 WELCOME TO ${eventName.toUpperCase()}! The party starts NOW! Let's turn up the energy!`,
+        conference: `🎤 WELCOME TO ${eventName.toUpperCase()}! Get ready for an INCREDIBLE experience! Let's make it happen!`
+      },
+      professional: {
+        birthday: `🎂 Welcome to ${eventName}. We are pleased to celebrate this milestone with you today.`,
+        corporate: `🏢 Welcome to ${eventName}. Thank you for joining us for this corporate event.`,
+        wedding: `💒 Welcome to ${eventName}. We are honored to witness this celebration of love.`,
+        party: `🎉 Welcome to ${eventName}. We hope you have an enjoyable evening with us.`,
+        conference: `🎤 Welcome to ${eventName}. We appreciate your attendance at today's conference.`
+      }
+    };
+
+    return welcomeMessages[aiPersonality][eventType] || `Welcome to ${eventName}!`;
+  };
+
+  // Enhanced analysis with face recognition
+  const performSmartAnalysis = async () => {
+    if (!videoElement || !analyzerRef.current || isAnalyzing) return;
+
+    setIsAnalyzing(true);
+    
+    try {
+      // Create enhanced prompt for smart event analysis
+      const vipNames = eventSetup.vipPeople.map(p => p.name).join(', ');
+      const enhancedPrompt = `
+Analyze this ${eventSetup.eventType} event image for DJ Tillu Smart Event Emcee:
+
+EVENT CONTEXT:
+- Event: ${eventSetup.eventName}
+- Type: ${eventSetup.eventType}
+- VIP People to recognize: ${vipNames || 'None specified'}
+
+ANALYSIS TASKS:
+1. Count visible people in the image
+2. Determine crowd mood (excited, happy, energetic, chill, focused, etc.)
+3. Rate energy level (1-10)
+4. Identify any special activities (dancing, eating, speaking, cake cutting, etc.)
+5. Look for VIP people if any are specified
+
+RESPONSE FORMAT:
+People: [number]
+Mood: [mood word]
+Energy: [1-10]
+Activity: [what people are doing]
+VIP_Spotted: [name if recognized, or "none"]
+Special_Moment: [yes/no - if cake, speech, dance, etc.]
+
+Example: "People: 5, Mood: excited, Energy: 8, Activity: dancing, VIP_Spotted: John Smith, Special_Moment: yes"
+`;
+
+      // Capture and analyze frame
+      const canvas = document.createElement('canvas');
+      const ctx = canvas.getContext('2d');
+      if (!ctx) return;
+
+      canvas.width = videoElement.videoWidth;
+      canvas.height = videoElement.videoHeight;
+      ctx.drawImage(videoElement, 0, 0);
+      const imageBase64 = canvas.toDataURL('image/jpeg', 0.8).split(',')[1];
+
+      const requestBody = {
+        contents: [{
+          parts: [
+            { text: enhancedPrompt },
+            {
+              inline_data: {
+                mime_type: "image/jpeg",
+                data: imageBase64
+              }
+            }
+          ]
+        }],
+        generationConfig: {
+          temperature: 0.1,
+          topK: 1,
+          topP: 1,
+          maxOutputTokens: 1024,
+        }
+      };
+
+      const response = await fetch(
+        `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-lite-preview-06-17:generateContent?key=AIzaSyDMtDDrtr8WLwUHpXnVkRVzN1s_4IkUsRo`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(requestBody)
+        }
+      );
+
+      if (!response.ok) throw new Error(`Analysis failed: ${response.status}`);
+
+      const data = await response.json();
+      const responseText = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
+      
+      // Parse the enhanced response
+      const peopleMatch = responseText.match(/People:\s*(\d+)/i);
+      const moodMatch = responseText.match(/Mood:\s*(\w+)/i);
+      const energyMatch = responseText.match(/Energy:\s*(\d+)/i);
+      const activityMatch = responseText.match(/Activity:\s*([^,\n]+)/i);
+      const vipMatch = responseText.match(/VIP_Spotted:\s*([^,\n]+)/i);
+      const specialMomentMatch = responseText.match(/Special_Moment:\s*(yes|no)/i);
+
+      const newCrowdSize = peopleMatch ? parseInt(peopleMatch[1]) : 0;
+      const newMood = moodMatch ? moodMatch[1].toLowerCase() : 'neutral';
+      const newEnergy = energyMatch ? parseInt(energyMatch[1]) * 10 : 50; // Convert to 0-100
+      const activity = activityMatch ? activityMatch[1].trim() : 'general';
+      const vipSpotted = vipMatch ? vipMatch[1].trim() : 'none';
+      const hasSpecialMoment = specialMomentMatch ? specialMomentMatch[1] === 'yes' : false;
+
+      // Update state
+      setCrowdSize(newCrowdSize);
+      setCurrentMood(newMood);
+      setCurrentEnergy(newEnergy);
+      setLastAnalysis(new Date());
+
+      // Handle VIP recognition
+      if (vipSpotted && vipSpotted !== 'none') {
+        handleVIPRecognition(vipSpotted);
+      }
+
+      // Handle special moments
+      if (hasSpecialMoment) {
+        handleSpecialMoment(activity, newMood);
+      }
+
+      // Adapt music based on analysis
+      adaptMusicToContext(newMood, newEnergy, activity);
+
+      console.log('🎤 Smart Analysis:', { 
+        people: newCrowdSize, 
+        mood: newMood, 
+        energy: newEnergy, 
+        activity, 
+        vipSpotted, 
+        specialMoment: hasSpecialMoment 
+      });
+
+    } catch (error) {
+      console.error('🎤 Smart analysis error:', error);
+    } finally {
+      setIsAnalyzing(false);
+    }
+  };
+
+  // Handle VIP recognition
+  const handleVIPRecognition = (recognizedName: string) => {
+    const vipPerson = eventSetup.vipPeople.find(person => 
+      person.name.toLowerCase().includes(recognizedName.toLowerCase()) ||
+      recognizedName.toLowerCase().includes(person.name.toLowerCase())
+    );
+
+    if (vipPerson) {
+      const updatedPerson = {
+        ...vipPerson,
+        recognitionCount: (vipPerson.recognitionCount || 0) + 1,
+        lastSeen: new Date()
+      };
+
+      setRecognizedPeople(prev => {
+        const existing = prev.find(p => p.id === vipPerson.id);
+        if (existing) {
+          return prev.map(p => p.id === vipPerson.id ? updatedPerson : p);
+        } else {
+          return [...prev, updatedPerson];
+        }
+      });
+
+      // Trigger personalized announcement
+      const greeting = vipPerson.greeting || `Welcome ${vipPerson.name}!`;
+      setTimeout(() => {
+        onAnnouncement(greeting);
+      }, 1000);
+
+      console.log('🌟 VIP Recognized:', vipPerson.name);
+    }
+  };
+
+  // Handle special moments
+  const handleSpecialMoment = (activity: string, mood: string) => {
+    const { eventType, aiPersonality } = eventSetup;
+    
+    let announcement = '';
+    
+    if (activity.includes('cake') && eventType === 'birthday') {
+      announcement = generateSpecialMomentAnnouncement('cake_cutting', aiPersonality);
+    } else if (activity.includes('speech') || activity.includes('speaking')) {
+      announcement = generateSpecialMomentAnnouncement('speech', aiPersonality);
+    } else if (activity.includes('dancing')) {
+      announcement = generateSpecialMomentAnnouncement('dancing', aiPersonality);
+    } else if (activity.includes('toast')) {
+      announcement = generateSpecialMomentAnnouncement('toast', aiPersonality);
+    }
+
+    if (announcement) {
+      setTimeout(() => {
+        onAnnouncement(announcement);
+      }, 2000);
+    }
+  };
+
+  // Generate special moment announcements
+  const generateSpecialMomentAnnouncement = (moment: string, personality: string): string => {
+    const announcements = {
+      humorous: {
+        cake_cutting: "🎂 Hold up everyone! It's cake time! Don't worry, I counted the candles - we're not telling anyone the real number!",
+        speech: "🎤 Looks like someone's got something to say! Everyone quiet down - this could be good!",
+        dancing: "💃 Oh my! Look at those moves! The dance floor is officially ON FIRE!",
+        toast: "🥂 Glasses up everyone! Time for a toast! And remember, no crying in your champagne!"
+      },
+      formal: {
+        cake_cutting: "🎂 Ladies and gentlemen, we have reached the moment for the traditional cake cutting ceremony.",
+        speech: "🎤 We now have a special address. Please give your attention to our speaker.",
+        dancing: "💃 The dance floor is now active. Please join in the celebration.",
+        toast: "🥂 Please raise your glasses for a special toast."
+      },
+      energetic: {
+        cake_cutting: "🎂 CAKE TIME! CAKE TIME! Everyone gather around! This is the MOMENT we've been waiting for!",
+        speech: "🎤 SPEECH TIME! Everyone listen up! This is going to be AMAZING!",
+        dancing: "💃 THE DANCE FLOOR IS ALIVE! Look at those INCREDIBLE moves! Keep it going!",
+        toast: "🥂 TOAST TIME! Glasses HIGH! Let's make this EPIC!"
+      },
+      professional: {
+        cake_cutting: "🎂 We are now ready for the cake cutting ceremony. Please gather around.",
+        speech: "🎤 We have a speaker ready to address the group. Please give them your attention.",
+        dancing: "💃 Dancing has commenced. Please feel free to join the celebration.",
+        toast: "🥂 Please prepare for a toast. Kindly raise your glasses."
+      }
+    };
+
+    return announcements[personality as keyof typeof announcements]?.[moment as keyof typeof announcements.humorous] || 
+           `Special moment detected: ${moment}`;
+  };
+
+  // Adapt music based on context
+  const adaptMusicToContext = (mood: string, energy: number, activity: string) => {
+    if (!isPlaying || !tracks.length) return;
+
+    let targetBPM = 120;
+    let preferredGenres: string[] = [];
+
+    // Determine music based on activity and mood
+    if (activity.includes('dancing')) {
+      targetBPM = 130 + (energy / 10);
+      preferredGenres = ['Electronic', 'House', 'Techno'];
+    } else if (activity.includes('eating') || activity.includes('dinner')) {
+      targetBPM = 90 + (energy / 15);
+      preferredGenres = ['Jazz', 'Ambient', 'Chill'];
+    } else if (activity.includes('speech') || activity.includes('presentation')) {
+      // Lower volume or pause for speeches
+      return;
+    } else {
+      // General background music
+      targetBPM = 110 + (energy / 8);
+      preferredGenres = ['Electronic', 'Pop', 'House'];
+    }
+
+    // Find suitable track
+    const suitableTracks = tracks.filter(track => {
+      const bpmMatch = Math.abs(track.bpm - targetBPM) < 20;
+      const genreMatch = preferredGenres.some(genre => 
+        track.genre.toLowerCase().includes(genre.toLowerCase())
+      );
+      return bpmMatch || genreMatch;
+    });
+
+    if (suitableTracks.length > 0 && currentTrack) {
+      const newTrack = suitableTracks[Math.floor(Math.random() * suitableTracks.length)];
+      if (newTrack.id !== currentTrack.id) {
+        console.log('🎵 Adapting music for context:', { activity, mood, newTrack: newTrack.title });
+        setTimeout(() => {
+          onTrackChange(newTrack);
+        }, 3000);
+      }
+    }
+  };
+
+  // Main analysis loop
+  useEffect(() => {
+    if (!isActive || !videoElement) return;
+
+    // Run analysis every 2 seconds for real-time responsiveness
+    analysisIntervalRef.current = setInterval(performSmartAnalysis, 2000);
+
+    return () => {
+      if (analysisIntervalRef.current) {
+        clearInterval(analysisIntervalRef.current);
+      }
+    };
+  }, [isActive, videoElement, eventSetup]);
+
+  return {
+    isActive,
+    startEvent,
+    stopEvent,
+    recognizedPeople,
+    currentMood,
+    currentEnergy,
+    crowdSize,
+    lastAnalysis,
+    isAnalyzing,
+    eventStartTime: eventStartTime.current
+  };
+};

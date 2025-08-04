@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { EventSetupWizard } from './components/EventSetupWizard';
 import { DraggablePanel } from './components/DraggablePanel';
 import { TrackList } from './components/TrackList';
 import { NowPlaying } from './components/NowPlaying';
@@ -21,8 +22,25 @@ import { useAudioPlayer } from './hooks/useAudioPlayer';
 import { useGeminiMoodAnalysis } from './hooks/useGeminiMoodAnalysis';
 import { useAIMoodDJ } from './hooks/useAIMoodDJ';
 import { useSmartEventDJ } from './hooks/useSmartEventDJ';
+import { useSmartEventEmcee } from './hooks/useSmartEventEmcee';
 import { Track } from './data/tracks';
 import { useTrackLibrary } from './hooks/useTrackLibrary';
+
+interface EventSetup {
+  eventName: string;
+  eventType: 'birthday' | 'corporate' | 'wedding' | 'party' | 'conference';
+  duration: number;
+  vipPeople: Array<{
+    id: string;
+    name: string;
+    role: string;
+    imageFile?: File;
+    imageUrl?: string;
+    greeting?: string;
+  }>;
+  aiPersonality: 'humorous' | 'formal' | 'energetic' | 'professional';
+  specialMoments: string[];
+}
 
 function App() {
   const { 
@@ -33,6 +51,8 @@ function App() {
     refreshLibrary 
   } = useTrackLibrary();
   
+  const [showSetup, setShowSetup] = useState(true);
+  const [eventSetup, setEventSetup] = useState<EventSetup | null>(null);
   const [showSettings, setShowSettings] = useState(false);
   const [moodOverride, setMoodOverride] = useState<'hype' | 'chill' | null>(null);
   const [showOverlays, setShowOverlays] = useState(true);
@@ -131,6 +151,24 @@ function App() {
     currentTrack
   });
 
+  // Smart Event Emcee (new enhanced system)
+  const smartEmcee = useSmartEventEmcee({
+    tracks: trackLibrary,
+    videoElement,
+    eventSetup: eventSetup || {
+      eventName: 'DJ Session',
+      eventType: 'party',
+      duration: 4,
+      vipPeople: [],
+      aiPersonality: 'energetic',
+      specialMoments: []
+    },
+    onTrackChange: loadTrack,
+    onAnnouncement: triggerAnnouncement,
+    isPlaying,
+    currentTrack
+  });
+
   const handleAddToLibrary = (track: Track) => {
     addToLibrary(track);
   };
@@ -146,6 +184,11 @@ function App() {
     
     // Mark session as started immediately
     setHasSessionStarted(true);
+    
+    // Start smart emcee if event is configured
+    if (eventSetup) {
+      smartEmcee.startEvent();
+    }
     
     // Announce session start
     const startAnnouncements = [
@@ -185,6 +228,28 @@ function App() {
     document.title = 'DJ Tillu - Live AI DJ Experience';
   }, []);
 
+  // Handle event setup completion
+  const handleSetupComplete = (setup: EventSetup) => {
+    setEventSetup(setup);
+    setShowSetup(false);
+    console.log('🎪 Event setup completed:', setup);
+  };
+
+  const handleSkipSetup = () => {
+    setShowSetup(false);
+    console.log('🎪 Event setup skipped');
+  };
+
+  // Show setup wizard first
+  if (showSetup) {
+    return (
+      <EventSetupWizard
+        onSetupComplete={handleSetupComplete}
+        onSkip={handleSkipSetup}
+      />
+    );
+  }
+
   return (
     <div className="h-screen w-screen overflow-hidden relative bg-black">
       {/* Fullscreen Video Background */}
@@ -201,10 +266,21 @@ function App() {
               <span className="text-lg font-bold text-white">DJ</span>
             </div>
             <div className="text-white">
-              <h1 className="text-xl font-bold bg-gradient-to-r from-purple-400 to-pink-400 bg-clip-text text-transparent">
-                DJ Tillu
-              </h1>
-              <p className="text-xs text-gray-300 opacity-80">AI Live Session</p>
+              {eventSetup ? (
+                <>
+                  <h1 className="text-xl font-bold bg-gradient-to-r from-purple-400 to-pink-400 bg-clip-text text-transparent">
+                    {eventSetup.eventName}
+                  </h1>
+                  <p className="text-xs text-gray-300 opacity-80">Smart AI Emcee • {eventSetup.eventType}</p>
+                </>
+              ) : (
+                <>
+                  <h1 className="text-xl font-bold bg-gradient-to-r from-purple-400 to-pink-400 bg-clip-text text-transparent">
+                    DJ Tillu
+                  </h1>
+                  <p className="text-xs text-gray-300 opacity-80">AI Live Session</p>
+                </>
+              )}
             </div>
           </div>
           
@@ -447,11 +523,13 @@ function App() {
 
 
         {/* AI Status Indicator */}
-        {(isAIActive || isEventActive) && (
+        {(isAIActive || isEventActive || smartEmcee.isActive) && (
           <div className="absolute top-1/2 left-8 transform -translate-y-1/2 z-50">
             <div className={`px-4 py-2 rounded-full backdrop-blur-xl shadow-2xl border transition-all ${
               isTransitioning 
                 ? 'bg-yellow-500/30 border-yellow-500/50'
+                : smartEmcee.isActive
+                ? 'bg-blue-500/30 border-blue-500/50'
                 : isEventActive
                 ? 'bg-purple-500/30 border-purple-500/50'
                 : 'bg-green-500/30 border-green-500/50'
@@ -459,13 +537,16 @@ function App() {
               <div className="flex items-center space-x-2">
                 <div className={`w-2 h-2 rounded-full animate-pulse ${
                   isTransitioning ? 'bg-yellow-400' : 
+                  smartEmcee.isActive ? 'bg-blue-400' :
                   isEventActive ? 'bg-purple-400' : 'bg-green-400'
                 }`}></div>
                 <span className={`font-semibold text-sm ${
                   isTransitioning ? 'text-yellow-300' : 
+                  smartEmcee.isActive ? 'text-blue-300' :
                   isEventActive ? 'text-purple-300' : 'text-green-300'
                 }`}>
                   {isTransitioning ? 'TRANSITIONING' : 
+                   smartEmcee.isActive ? 'SMART EMCEE ACTIVE' :
                    isEventActive ? 'SMART EVENT ACTIVE' : 'AI DJ ACTIVE'}
                 </span>
                 {isTransitioning && (
@@ -473,6 +554,20 @@ function App() {
                     {transitionProgress}%
                   </span>
                 )}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Smart Emcee Status */}
+        {smartEmcee.isActive && (
+          <div className="absolute bottom-32 right-8 z-50">
+            <div className="px-4 py-2 rounded-full bg-blue-500/30 border border-blue-500/50 backdrop-blur-xl shadow-2xl">
+              <div className="flex items-center space-x-2">
+                <div className="w-2 h-2 bg-blue-400 rounded-full animate-pulse"></div>
+                <span className="text-blue-300 font-semibold text-sm">
+                  SMART EMCEE • {smartEmcee.recognizedPeople.length} VIPs SEEN
+                </span>
               </div>
             </div>
           </div>
