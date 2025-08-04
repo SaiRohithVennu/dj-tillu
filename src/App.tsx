@@ -80,20 +80,6 @@ function App() {
     isDucked
   } = useAudioPlayer();
 
-  // AWS Face Recognition - Must be declared before OpenAI host
-  const awsFaceRecognition = useServerSideAWSFaceRecognition({
-    videoElement,
-    vipPeople: eventSetup?.vipPeople || [],
-    eventId,
-    enabled: isEventActive && eventSetup !== null,
-    onVIPRecognized: handleVIPRecognized
-  });
-
-  // Simple crowd analysis without complex mood tracking
-  const mood = currentMood;
-  const energy = 75; // Fixed energy level for event hosting
-  const confidence = 85; // Fixed confidence
-
   const triggerAnnouncement = (message: string) => {
     console.log('🎤 Triggering announcement:', message);
     duckAudio(); // Duck audio before announcement
@@ -133,13 +119,27 @@ function App() {
   } = useSmartEventDJ({
     tracks: trackLibrary,
     currentMood: currentMood,
-    energy,
+    energy: 75,
     crowdSize,
     onTrackChange: loadTrack,
     onAnnouncement: triggerAnnouncement,
     isPlaying,
     currentTrack
   });
+  // AWS Face Recognition - Must be declared before OpenAI host
+  const awsFaceRecognition = useServerSideAWSFaceRecognition({
+    videoElement,
+    vipPeople: eventSetup?.vipPeople || [],
+    eventId,
+    enabled: isEventActive && eventSetup !== null,
+    onVIPRecognized: handleVIPRecognized
+  });
+
+  // Simple crowd analysis without complex mood tracking
+  const mood = currentMood;
+  const energy = 75; // Fixed energy level for event hosting
+  const confidence = 85; // Fixed confidence
+
 
   // Simple state for announcements
   const [isAnnouncing, setIsAnnouncing] = useState(false);
