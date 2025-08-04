@@ -51,13 +51,35 @@ export const VoiceAnnouncements: React.FC<VoiceAnnouncementsProps> = ({
 
   const playAnnouncement = (text: string) => {
     if ('speechSynthesis' in window) {
+      // Cancel any ongoing speech
+      speechSynthesis.cancel();
+      
       // Duck audio before announcement
       onAnnouncementStart?.();
       
       const utterance = new SpeechSynthesisUtterance(text);
-      utterance.rate = 0.9;
-      utterance.pitch = 1.1;
-      utterance.volume = 0.8;
+      
+      // Get available voices
+      const voices = speechSynthesis.getVoices();
+      
+      // Try to find a better voice (prefer female, English)
+      const preferredVoice = voices.find(voice => 
+        voice.lang.includes('en') && 
+        (voice.name.includes('Female') || 
+         voice.name.includes('Samantha') || 
+         voice.name.includes('Karen') ||
+         voice.name.includes('Moira') ||
+         voice.name.includes('Tessa'))
+      ) || voices.find(voice => voice.lang.includes('en')) || voices[0];
+      
+      if (preferredVoice) {
+        utterance.voice = preferredVoice;
+      }
+      
+      // Adjust voice settings for more natural sound
+      utterance.rate = 0.85;
+      utterance.pitch = 1.0;
+      utterance.volume = 0.9;
       
       utterance.onend = () => {
         // Unduck audio after announcement
@@ -67,6 +89,8 @@ export const VoiceAnnouncements: React.FC<VoiceAnnouncementsProps> = ({
       };
       
       speechSynthesis.speak(utterance);
+      
+      console.log('🎤 Speaking with voice:', preferredVoice?.name || 'default');
     }
   };
 

@@ -124,37 +124,39 @@ export const useSmartEventEmcee = ({
 
   // Enhanced analysis with face recognition
   const performSmartAnalysis = async () => {
-    if (!videoElement || !analyzerRef.current || isAnalyzing) return;
+    if (!videoElement || !analyzerRef.current || isAnalyzing || !isActive) return;
 
     setIsAnalyzing(true);
     
     try {
-      // Create enhanced prompt for smart event analysis
+      // Create enhanced prompt with better face recognition
       const vipNames = eventSetup.vipPeople.map(p => p.name).join(', ');
       const enhancedPrompt = `
-Analyze this ${eventSetup.eventType} event image for DJ Tillu Smart Event Emcee:
+You are an AI Event Host analyzing a live camera feed. Look very carefully at this image:
 
 EVENT CONTEXT:
 - Event: ${eventSetup.eventName}
 - Type: ${eventSetup.eventType}
-- VIP People to recognize: ${vipNames || 'None specified'}
+- Key people to look for: ${vipNames || 'None specified'}
+- You must look VERY carefully at faces in the image
 
-ANALYSIS TASKS:
-1. Count visible people in the image
-2. Determine crowd mood (excited, happy, energetic, chill, focused, etc.)
-3. Rate energy level (1-10)
-4. Identify any special activities (dancing, eating, speaking, cake cutting, etc.)
-5. Look for VIP people if any are specified
+CRITICAL INSTRUCTIONS:
+1. CAREFULLY examine every face in the image
+2. Look for the specific people: ${vipNames}
+3. Count all visible people
+4. Determine what's happening (speaking, presenting, celebrating, etc.)
+5. Rate the energy level (1-10)
 
-RESPONSE FORMAT:
+RESPOND EXACTLY IN THIS FORMAT:
 People: [number]
 Mood: [mood word]
 Energy: [1-10]
 Activity: [what people are doing]
-VIP_Spotted: [name if recognized, or "none"]
-Special_Moment: [yes/no - if cake, speech, dance, etc.]
+Person_Recognized: [exact name if you see them, or "none"]
+Should_Announce: [yes/no - if you recognized someone or see special activity]
+Announcement: [what to say if Should_Announce is yes]
 
-Example: "People: 5, Mood: excited, Energy: 8, Activity: dancing, VIP_Spotted: John Smith, Special_Moment: yes"
+Example: "People: 2, Mood: focused, Energy: 6, Activity: working at desk, Person_Recognized: Sarah Johnson, Should_Announce: yes, Announcement: Welcome our amazing intern Sarah! Great to see you here!"
 `;
 
       // Capture and analyze frame
@@ -201,20 +203,24 @@ Example: "People: 5, Mood: excited, Energy: 8, Activity: dancing, VIP_Spotted: J
       const data = await response.json();
       const responseText = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
       
+      console.log('🤖 AI Analysis Response:', responseText);
+      
       // Parse the enhanced response
       const peopleMatch = responseText.match(/People:\s*(\d+)/i);
       const moodMatch = responseText.match(/Mood:\s*(\w+)/i);
       const energyMatch = responseText.match(/Energy:\s*(\d+)/i);
       const activityMatch = responseText.match(/Activity:\s*([^,\n]+)/i);
-      const vipMatch = responseText.match(/VIP_Spotted:\s*([^,\n]+)/i);
-      const specialMomentMatch = responseText.match(/Special_Moment:\s*(yes|no)/i);
+      const personMatch = responseText.match(/Person_Recognized:\s*([^,\n]+)/i);
+      const shouldAnnounceMatch = responseText.match(/Should_Announce:\s*(yes|no)/i);
+      const announcementMatch = responseText.match(/Announcement:\s*([^,\n]+)/i);
 
       const newCrowdSize = peopleMatch ? parseInt(peopleMatch[1]) : 0;
       const newMood = moodMatch ? moodMatch[1].toLowerCase() : 'neutral';
       const newEnergy = energyMatch ? parseInt(energyMatch[1]) * 10 : 50; // Convert to 0-100
       const activity = activityMatch ? activityMatch[1].trim() : 'general';
-      const vipSpotted = vipMatch ? vipMatch[1].trim() : 'none';
-      const hasSpecialMoment = specialMomentMatch ? specialMomentMatch[1] === 'yes' : false;
+      const personRecognized = personMatch ? personMatch[1].trim() : 'none';
+      const shouldAnnounce = shouldAnnounceMatch ? shouldAnnounceMatch[1] === 'yes' : false;
+      const announcement = announcementMatch ? announcementMatch[1].trim() : '';
 
       // Update state
       setCrowdSize(newCrowdSize);
@@ -223,13 +229,15 @@ Example: "People: 5, Mood: excited, Energy: 8, Activity: dancing, VIP_Spotted: J
       setLastAnalysis(new Date());
 
       // Handle VIP recognition
-      if (vipSpotted && vipSpotted !== 'none') {
-        handleVIPRecognition(vipSpotted);
+      if (personRecognized && personRecognized !== 'none') {
+        handleVIPRecognition(personRecognized, announcement);
       }
 
-      // Handle special moments
-      if (hasSpecialMoment) {
-        handleSpecialMoment(activity, newMood);
+      // Handle announcements
+      if (shouldAnnounce && announcement) {
+        setTimeout(() => {
+          onAnnouncement(announcement);
+        }, 1000);
       }
 
       // Adapt music based on analysis
@@ -240,8 +248,8 @@ Example: "People: 5, Mood: excited, Energy: 8, Activity: dancing, VIP_Spotted: J
         mood: newMood, 
         energy: newEnergy, 
         activity, 
-        vipSpotted, 
-        specialMoment: hasSpecialMoment 
+        personRecognized, 
+        shouldAnnounce 
       });
 
     } catch (error) {
@@ -252,7 +260,7 @@ Example: "People: 5, Mood: excited, Energy: 8, Activity: dancing, VIP_Spotted: J
   };
 
   // Handle VIP recognition
-  const handleVIPRecognition = (recognizedName: string) => {
+  const handleVIPRecognition = (recognizedName: string, customAnnouncement?: string) => {
     const vipPerson = eventSetup.vipPeople.find(person => 
       person.name.toLowerCase().includes(recognizedName.toLowerCase()) ||
       recognizedName.toLowerCase().includes(person.name.toLowerCase())
@@ -275,7 +283,7 @@ Example: "People: 5, Mood: excited, Energy: 8, Activity: dancing, VIP_Spotted: J
       });
 
       // Trigger personalized announcement
-      const greeting = vipPerson.greeting || `Welcome ${vipPerson.name}!`;
+      const greeting = customAnnouncement || vipPerson.greeting || `Welcome ${vipPerson.name}!`;
       setTimeout(() => {
         onAnnouncement(greeting);
       }, 1000);
@@ -395,8 +403,8 @@ Example: "People: 5, Mood: excited, Energy: 8, Activity: dancing, VIP_Spotted: J
   useEffect(() => {
     if (!isActive || !videoElement) return;
 
-    // Run analysis every 2 seconds for real-time responsiveness
-    analysisIntervalRef.current = setInterval(performSmartAnalysis, 2000);
+    // Run analysis every 3 seconds for better accuracy
+    analysisIntervalRef.current = setInterval(performSmartAnalysis, 3000);
 
     return () => {
       if (analysisIntervalRef.current) {
