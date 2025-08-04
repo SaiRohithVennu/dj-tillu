@@ -118,30 +118,62 @@ export const EventSetupWizard: React.FC<EventSetupWizardProps> = ({
       humorous: {
         'Birthday Person': `🎂 Hold up everyone! The birthday legend has arrived! ${person.name}, you're officially older and hopefully wiser! Let's sing!`,
         'CEO': `📈 Alert! Alert! The big boss ${person.name} is in the building! Everyone look busy! Just kidding - let's give them a warm welcome!`,
+        'Intern': `👋 Look who's here! Our amazing intern ${person.name} has joined us! Don't worry, we won't make you get coffee... yet! Welcome!`,
+        'Manager': `👔 The manager ${person.name} has entered the building! Everyone pretend you've been working hard! Just kidding - welcome!`,
         'Bride': `👰 Here comes the bride! Everyone, please welcome the absolutely stunning ${person.name}! Tissues are available at the back!`,
-        'VIP Guest': `⭐ VIP alert! ${person.name} has graced us with their presence! Let's show them some love!`
+        'VIP Guest': `⭐ VIP alert! ${person.name} has graced us with their presence! Let's show them some love!`,
+        'Guest Speaker': `🎤 Our guest speaker ${person.name} is here! Get ready for some wisdom, insights, and hopefully no boring PowerPoints!`,
+        'Team Lead': `🚀 Team lead ${person.name} has arrived! Time to show them what we've been working on! Let's make them proud!`
       },
       formal: {
         'Birthday Person': `🎉 Ladies and gentlemen, please join me in celebrating ${person.name} on this very special day. Happy Birthday!`,
         'CEO': `🏢 It is my honor to welcome our esteemed CEO, ${person.name}. Please join me in extending a warm corporate welcome.`,
+        'Intern': `👋 Please join me in welcoming our intern, ${person.name}. We are pleased to have you as part of our team.`,
+        'Manager': `👔 We are honored to welcome our manager, ${person.name}. Thank you for your leadership and guidance.`,
         'Bride': `💒 We are gathered here today to celebrate love. Please welcome our beautiful bride, ${person.name}.`,
-        'VIP Guest': `✨ Please join me in welcoming our distinguished guest, ${person.name}.`
+        'VIP Guest': `✨ Please join me in welcoming our distinguished guest, ${person.name}.`,
+        'Guest Speaker': `🎤 It is our privilege to welcome our distinguished guest speaker, ${person.name}. Please give them your full attention.`,
+        'Team Lead': `🚀 Please join me in welcoming our team lead, ${person.name}. We appreciate your dedication to our success.`
       },
       energetic: {
         'Birthday Person': `🎂 BIRTHDAY SUPERSTAR ALERT! ${person.name} is HERE! Let's get this party STARTED! Everybody scream HAPPY BIRTHDAY!`,
         'CEO': `🚀 THE BOSS IS HERE! Give it up for ${person.name}! Let's show them what ENERGY looks like!`,
+        'Intern': `👋 INTERN POWER! ${person.name} is in the house! Fresh energy, fresh ideas! Let's GO!`,
+        'Manager': `👔 MANAGER ON DECK! ${person.name} is HERE! Time to show them what TEAMWORK looks like! YEAH!`,
         'Bride': `💒 HERE COMES THE BRIDE! Everyone on your feet for the absolutely GORGEOUS ${person.name}! This is IT!`,
-        'VIP Guest': `⭐ VIP IN THE HOUSE! ${person.name} is HERE and we are PUMPED! Let's make some NOISE!`
+        'VIP Guest': `⭐ VIP IN THE HOUSE! ${person.name} is HERE and we are PUMPED! Let's make some NOISE!`,
+        'Guest Speaker': `🎤 SPEAKER ALERT! ${person.name} is HERE to drop some KNOWLEDGE BOMBS! Are you READY?!`,
+        'Team Lead': `🚀 TEAM LEAD IN THE BUILDING! ${person.name} is HERE! Let's show them our AMAZING energy! GO TEAM!`
       },
       professional: {
         'Birthday Person': `🎂 We are pleased to celebrate ${person.name}'s birthday today. Please join us in wishing them well.`,
         'CEO': `🏢 We welcome our Chief Executive Officer, ${person.name}. Thank you for joining us today.`,
+        'Intern': `👋 We welcome our intern, ${person.name}, to today's proceedings. We appreciate your participation.`,
+        'Manager': `👔 We are pleased to welcome our manager, ${person.name}. Thank you for your continued leadership.`,
         'Bride': `💒 Please welcome ${person.name}, our bride, as we celebrate this joyous occasion.`,
-        'VIP Guest': `✨ We are honored to have ${person.name} with us today. Please join me in welcoming them.`
+        'VIP Guest': `✨ We are honored to have ${person.name} with us today. Please join me in welcoming them.`,
+        'Guest Speaker': `🎤 We are honored to welcome our guest speaker, ${person.name}. Please give them your undivided attention.`,
+        'Team Lead': `🚀 We welcome our team lead, ${person.name}. Thank you for your guidance and expertise.`
       }
     };
 
-    return greetings[setup.aiPersonality][person.role] || `Welcome ${person.name}!`;
+    // Try to find exact match first, then fallback to generic greeting
+    const personalityGreetings = greetings[setup.aiPersonality];
+    const exactMatch = personalityGreetings[person.role];
+    
+    if (exactMatch) {
+      return exactMatch;
+    }
+    
+    // Generate dynamic greeting for custom roles
+    const roleBasedGreeting = {
+      humorous: `🎉 Look who's here! Our amazing ${person.role.toLowerCase()}, ${person.name}! Let's give them a warm welcome!`,
+      formal: `✨ Please join me in welcoming our ${person.role.toLowerCase()}, ${person.name}.`,
+      energetic: `🚀 ${person.role.toUpperCase()} ALERT! ${person.name} is HERE! Let's show them some ENERGY!`,
+      professional: `👔 We welcome our ${person.role.toLowerCase()}, ${person.name}. Thank you for joining us today.`
+    };
+    
+    return roleBasedGreeting[setup.aiPersonality] || `Welcome ${person.name}!`;
   };
 
   const canProceed = () => {
@@ -372,19 +404,36 @@ export const EventSetupWizard: React.FC<EventSetupWizardProps> = ({
                       </div>
                       <div>
                         <label className="block text-sm font-medium text-gray-300 mb-1">Role</label>
-                        <select
+                        <input
+                          type="text"
                           value={person.role}
                           onChange={(e) => updateVIPPerson(person.id, { role: e.target.value })}
                           className="w-full bg-gray-700 border border-gray-600 rounded px-3 py-2 text-white text-sm"
+                          placeholder="e.g. Intern, Manager, Guest Speaker"
+                          list={`roles-${person.id}`}
+                        />
+                        <datalist id={`roles-${person.id}`}>
+                          <option value="Birthday Person" />
+                          <option value="CEO" />
+                          <option value="CTO" />
+                          <option value="Manager" />
+                          <option value="Intern" />
+                          <option value="Guest Speaker" />
+                          <option value="Team Lead" />
+                          <option value="Bride" />
+                          <option value="Groom" />
+                          <option value="Best Man" />
+                          <option value="Maid of Honor" />
+                          <option value="VIP Guest" />
+                          <option value="Host" />
+                          <option value="Presenter" />
+                          <option value="Client" />
+                          <option value="Investor" />
+                          <option value="Family Member" />
+                          <option value="Friend" />
+                          <option value="Colleague" />
                         >
-                          <option value="Birthday Person">Birthday Person</option>
-                          <option value="CEO">CEO</option>
-                          <option value="Bride">Bride</option>
-                          <option value="Groom">Groom</option>
-                          <option value="VIP Guest">VIP Guest</option>
-                          <option value="Speaker">Speaker</option>
-                          <option value="Host">Host</option>
-                        </select>
+                        </datalist>
                       </div>
                     </div>
 
