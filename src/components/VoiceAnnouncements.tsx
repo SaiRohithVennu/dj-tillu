@@ -660,7 +660,7 @@ export const VoiceAnnouncements: React.FC<VoiceAnnouncementsProps> = ({
         
         <button
           onClick={() => {
-            const testAnnouncement = "Hey everyone! This is your AI DJ testing the voice system. I'm using ElevenLabs for ultra-realistic speech. How does this sound?";
+            const testAnnouncement = "Hey everyone! This is your AI DJ testing the ElevenLabs voice system. How does this sound?";
             setLastAnnouncement(testAnnouncement);
             playAnnouncement(testAnnouncement);
           }}
