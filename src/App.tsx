@@ -1,328 +1,398 @@
-import React, { useState, useRef, useEffect } from 'react';
-import { Music, Settings, Play, Pause, SkipForward, Volume2, Mic, Camera, Users, Calendar, Zap } from 'lucide-react';
-import { useTrackLibrary } from './hooks/useTrackLibrary';
+import React, { useState, useEffect, useRef } from 'react';
+import { FullscreenVideoBackground } from './components/FullscreenVideoBackground';
+import { DraggablePanel } from './components/DraggablePanel';
+import { TrackList } from './components/TrackList';
+import { NowPlaying } from './components/NowPlaying';
+import { FloatingControls } from './components/FloatingControls';
+import { EventSetupWizard } from './components/EventSetupWizard';
+import { SmartEventDashboard } from './components/SmartEventDashboard';
+import { ContinuousAIAgentPanel } from './components/ContinuousAIAgentPanel';
+import { ServerSideAWSPanel } from './components/ServerSideAWSPanel';
+import { VoiceAnnouncements } from './components/VoiceAnnouncements';
+import { EventDetailsManager } from './components/EventDetailsManager';
+import { AudiusBrowser } from './components/AudiusBrowser';
+import { SupabaseTrackManager } from './components/SupabaseTrackManager';
+import { WhooshMoodBrowser } from './components/WhooshMoodBrowser';
+import { MoodPlaylistManager } from './components/MoodPlaylistManager';
+import { AudioVisualizer } from './components/AudioVisualizer';
+import { GeminiMoodDisplay } from './components/GeminiMoodDisplay';
+import { DynamicBackground } from './components/DynamicBackground';
+
 import { useAudioPlayer } from './hooks/useAudioPlayer';
-import { useMusicPlayer } from './hooks/useMusicPlayer';
-import { useSmartEventDJ } from './hooks/useSmartEventDJ';
-import { useSmartEventEmcee } from './hooks/useSmartEventEmcee';
-import { useServerSideAWSFaceRecognition } from './hooks/useServerSideAWSFaceRecognition';
+import { useTrackLibrary } from './hooks/useTrackLibrary';
+import { useGeminiMoodAnalysis } from './hooks/useGeminiMoodAnalysis';
 import { useContinuousAIAgent } from './hooks/useContinuousAIAgent';
-import { useOpenAIEventHost } from './hooks/useOpenAIEventHost';
-import { useWandbIntegration } from './hooks/useWandbIntegration';
-import TrackList from './components/TrackList';
-import NowPlaying from './components/NowPlaying';
-import DJInterface from './components/DJInterface';
-import AIDJPanel from './components/AIDJPanel';
-import AudioVisualizer from './components/AudioVisualizer';
-import DynamicBackground from './components/DynamicBackground';
-import FloatingControls from './components/FloatingControls';
-import SmartEventDashboard from './components/SmartEventDashboard';
-import EventSetupWizard from './components/EventSetupWizard';
-import ServerSideAWSPanel from './components/ServerSideAWSPanel';
-import ContinuousAIAgentPanel from './components/ContinuousAIAgentPanel';
-import OpenAIEventHostPanel from './components/OpenAIEventHostPanel';
-import FullscreenVideoBackground from './components/FullscreenVideoBackground';
-import { EventSetup, VIPPerson } from './components/EventSetupWizard';
+import { useServerSideAWSFaceRecognition } from './hooks/useServerSideAWSFaceRecognition';
+import { useSmartEventDJ } from './hooks/useSmartEventDJ';
+
+import { Track } from './data/tracks';
+
+interface VIPPerson {
+  id: string;
+  name: string;
+  role: string;
+  imageFile?: File;
+  imageUrl?: string;
+  greeting?: string;
+  recognitionCount: number;
+  lastSeen?: Date;
+}
+
+interface EventSetup {
+  eventName: string;
+  eventType: 'birthday' | 'corporate' | 'wedding' | 'party' | 'conference';
+  duration: number;
+  vipPeople: VIPPerson[];
+  aiPersonality: 'humorous' | 'formal' | 'energetic' | 'professional';
+  specialMoments: string[];
+}
 
 function App() {
+  // Core state
+  const [videoElement, setVideoElement] = useState<HTMLVideoElement | null>(null);
   const [showSettings, setShowSettings] = useState(false);
   const [eventSetup, setEventSetup] = useState<EventSetup | null>(null);
+  const [showEventSetup, setShowEventSetup] = useState(true);
   const [isEventActive, setIsEventActive] = useState(false);
-  const [eventId] = useState(() => `event_${Date.now()}`);
-  const videoElement = useRef<HTMLVideoElement>(null);
+  const [hasStarted, setHasStarted] = useState(false);
 
-  // Track library and audio player
-  const { tracks: trackLibrary, loadTrack, currentTrack } = useTrackLibrary();
-  const { isPlaying, togglePlayPause, volume, setVolume } = useAudioPlayer();
-  const musicPlayer = useMusicPlayer(trackLibrary, loadTrack);
+  // Generate unique event ID
+  const eventId = useRef(crypto.randomUUID()).current;
 
-  // Default event setup for when no event is configured
+  // Audio system
+  const audioPlayer = useAudioPlayer();
+  const trackLibrary = useTrackLibrary();
+
+  // AI systems
+  const geminiMood = useGeminiMoodAnalysis(videoElement, true);
+  
+  // Default event setup for AI systems
   const defaultSetup: EventSetup = {
     eventName: 'DJ Session',
     eventType: 'party',
-    duration: 120,
+    duration: 2,
     vipPeople: [],
-    specialMoments: [],
-    musicPreferences: {
-      genres: ['electronic', 'house', 'techno'],
-      energy: 'high',
-      explicitContent: false
-    },
-    hostPersonality: 'energetic'
+    aiPersonality: 'energetic',
+    specialMoments: []
   };
-
-  // Smart Event DJ
-  const smartDJ = useSmartEventDJ({
-    tracks: trackLibrary,
-    eventSetup: eventSetup || defaultSetup,
-    onTrackChange: loadTrack,
-    isPlaying,
-    currentTrack
-  });
-
-  // Smart Event Emcee
-  const smartEmcee = useSmartEventEmcee({
-    tracks: trackLibrary,
-    videoElement,
-    eventSetup: eventSetup || defaultSetup,
-    onTrackChange: loadTrack,
-    onAnnouncement: triggerAnnouncement,
-    isPlaying,
-    currentTrack
-  });
-
-  // Server-side AWS Face Recognition
-  const awsFaceRecognition = useServerSideAWSFaceRecognition({
-    videoElement,
-    vipPeople: eventSetup?.vipPeople || [],
-    eventId,
-    enabled: (isEventActive && eventSetup !== null) || (eventSetup !== null && eventSetup.vipPeople.length > 0),
-    onVIPRecognized: handleVIPRecognized
-  });
 
   // Continuous AI Agent
   const continuousAI = useContinuousAIAgent({
     videoElement,
-    eventSetup: eventSetup || defaultSetup,
+    eventContext: {
+      ...defaultSetup,
+      ...(eventSetup || {}),
+      startTime: new Date()
+    },
+    tracks: trackLibrary.tracks,
+    currentTrack: audioPlayer.currentTrack,
+    isPlaying: audioPlayer.isPlaying,
     onAnnouncement: triggerAnnouncement,
-    enabled: true
-  });
-
-  // OpenAI Event Host
-  const openAIHost = useOpenAIEventHost({
-    eventSetup: eventSetup || defaultSetup,
-    currentTrack,
-    isPlaying,
-    onAnnouncement: triggerAnnouncement,
+    onTrackChange: loadTrack,
     enabled: isEventActive
   });
 
-  // W&B Integration
-  const wandbIntegration = useWandbIntegration({
+  // AWS Face Recognition
+  const awsFaceRecognition = useServerSideAWSFaceRecognition({
+    videoElement,
+    vipPeople: eventSetup?.vipPeople || [],
     eventId,
-    eventSetup: eventSetup || defaultSetup,
-    enabled: isEventActive
+    enabled: isEventActive && eventSetup !== null,
+    onVIPRecognized: handleVIPRecognized
   });
 
-  function triggerAnnouncement(message: string, priority: 'immediate' | 'high' | 'medium' | 'low' = 'medium') {
-    console.log(`🎤 Announcement (${priority}): ${message}`);
-    
-    // Use Web Speech API for text-to-speech
-    if ('speechSynthesis' in window) {
-      const utterance = new SpeechSynthesisUtterance(message);
-      utterance.rate = 0.9;
-      utterance.pitch = 1.1;
-      utterance.volume = 0.8;
-      
-      // Choose voice based on personality
-      const voices = speechSynthesis.getVoices();
-      const personality = eventSetup?.hostPersonality || 'energetic';
-      
-      if (personality === 'professional') {
-        const professionalVoice = voices.find(v => v.name.includes('Microsoft David') || v.name.includes('Google UK English Male'));
-        if (professionalVoice) utterance.voice = professionalVoice;
-      } else if (personality === 'energetic') {
-        const energeticVoice = voices.find(v => v.name.includes('Microsoft Zira') || v.name.includes('Google US English Female'));
-        if (energeticVoice) utterance.voice = energeticVoice;
-      }
-      
-      speechSynthesis.speak(utterance);
-    }
-  }
+  // Smart Event DJ
+  const smartEventDJ = useSmartEventDJ({
+    tracks: trackLibrary.tracks,
+    currentMood: geminiMood.mood,
+    energy: geminiMood.energy,
+    crowdSize: geminiMood.crowdSize,
+    onTrackChange: loadTrack,
+    onAnnouncement: triggerAnnouncement,
+    isPlaying: audioPlayer.isPlaying,
+    currentTrack: audioPlayer.currentTrack
+  });
 
-  function handleVIPRecognized(vip: VIPPerson) {
-    console.log(`🎯 🎉 VIP RECOGNIZED: ${vip.name} (${vip.role})`);
-    
-    const greetings = {
-      'CEO': `Welcome, ${vip.name}! The CEO has arrived - let's make this event extraordinary!`,
-      'Manager': `Great to see you, ${vip.name}! Our manager is here to keep the energy high!`,
-      'VIP Guest': `Ladies and gentlemen, please welcome our special VIP guest, ${vip.name}!`,
-      'Speaker': `Everyone, let's give a warm welcome to our speaker, ${vip.name}!`,
-      'Performer': `The stage is set! Please welcome our talented performer, ${vip.name}!`,
-      'Sponsor': `We're honored to have our sponsor, ${vip.name}, join us tonight!`,
-      'Other': `Please join me in welcoming the amazing ${vip.name}!`
-    };
-
-    const greeting = greetings[vip.role as keyof typeof greetings] || greetings['Other'];
-    triggerAnnouncement(greeting, 'immediate');
-  }
-
-  function handleEventSetupComplete(setup: EventSetup) {
-    console.log('🎉 Event setup completed:', setup);
+  // Event handlers
+  const handleEventSetupComplete = (setup: EventSetup) => {
     setEventSetup(setup);
+    setShowEventSetup(false);
+    setIsEventActive(true);
+    console.log('🎪 Event setup complete:', setup.eventName);
+  };
+
+  const handleSkipSetup = () => {
+    setShowEventSetup(false);
+    setHasStarted(true);
+    console.log('🎪 Skipped event setup, starting basic DJ mode');
+  };
+
+  const loadTrack = async (track: Track) => {
+    try {
+      await audioPlayer.loadTrack(track);
+      console.log('🎵 Track loaded:', track.title);
+    } catch (error) {
+      console.error('Failed to load track:', error);
+    }
+  };
+
+  const handleVIPRecognized = (person: VIPPerson) => {
+    console.log('🌟 VIP recognized:', person.name);
     
-    // Auto-start event if VIP people are configured
-    if (setup.vipPeople.length > 0) {
-      setIsEventActive(true);
-      triggerAnnouncement(`Welcome to ${setup.eventName}! Let's get this ${setup.eventType} started!`, 'immediate');
-    }
-  }
+    // Trigger personalized announcement
+    const greeting = person.greeting || `Welcome ${person.name}! Great to see you here!`;
+    setTimeout(() => {
+      triggerAnnouncement(greeting);
+    }, 1000);
+  };
 
-  function handleStartEvent() {
-    if (eventSetup) {
-      setIsEventActive(true);
-      triggerAnnouncement(`Welcome to ${eventSetup.eventName}! Let's get this ${eventSetup.eventType} started!`, 'immediate');
-    }
-  }
+  const triggerAnnouncement = (message: string) => {
+    console.log('🎤 Triggering announcement:', message);
+    
+    // Dispatch custom event for voice system
+    window.dispatchEvent(new CustomEvent('immediateAnnouncement', {
+      detail: { message }
+    }));
+  };
 
-  function handleStopEvent() {
-    setIsEventActive(false);
-    triggerAnnouncement('Thank you for joining us! The event has concluded.', 'immediate');
+  const handleStartSession = () => {
+    setHasStarted(true);
+    if (!audioPlayer.currentTrack && trackLibrary.tracks.length > 0) {
+      loadTrack(trackLibrary.tracks[0]);
+    }
+    console.log('🎵 DJ session started');
+  };
+
+  // Auto-load first track when library is ready
+  useEffect(() => {
+    if (!audioPlayer.currentTrack && trackLibrary.tracks.length > 0 && !trackLibrary.isLoading) {
+      loadTrack(trackLibrary.tracks[0]);
+    }
+  }, [trackLibrary.tracks, trackLibrary.isLoading]);
+
+  // Show event setup wizard first
+  if (showEventSetup) {
+    return (
+      <EventSetupWizard
+        onSetupComplete={handleEventSetupComplete}
+        onSkip={handleSkipSetup}
+      />
+    );
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-purple-900 via-blue-900 to-indigo-900 text-white relative overflow-hidden">
+    <div className="relative min-h-screen overflow-hidden">
       {/* Dynamic Background */}
-      <DynamicBackground currentTrack={currentTrack} isPlaying={isPlaying} />
-      
+      <DynamicBackground 
+        mood={geminiMood.mood} 
+        energy={geminiMood.energy} 
+        isPlaying={audioPlayer.isPlaying} 
+      />
+
       {/* Fullscreen Video Background */}
-      <FullscreenVideoBackground ref={videoElement} />
-      
-      {/* Header */}
-      <header className="relative z-20 flex items-center justify-between p-6 bg-black/20 backdrop-blur-sm">
-        <div className="flex items-center space-x-4">
-          <div className="w-12 h-12 bg-gradient-to-r from-purple-500 to-pink-500 rounded-full flex items-center justify-center">
-            <Music className="w-6 h-6" />
-          </div>
-          <div>
-            <h1 className="text-2xl font-bold bg-gradient-to-r from-purple-400 to-pink-400 bg-clip-text text-transparent">
-              DJ Tillu
-            </h1>
-            <p className="text-sm text-gray-300">
-              {eventSetup ? `${eventSetup.eventName} • ${eventSetup.eventType}` : 'Smart AI Event Host'}
-            </p>
-          </div>
-        </div>
-        
-        <div className="flex items-center space-x-4">
-          {isEventActive && (
-            <div className="flex items-center space-x-2 px-3 py-1 bg-green-500/20 rounded-full border border-green-500/30">
-              <div className="w-2 h-2 bg-green-400 rounded-full animate-pulse"></div>
-              <span className="text-sm text-green-300">LIVE</span>
-            </div>
-          )}
-          
-          <button
-            onClick={() => setShowSettings(!showSettings)}
-            className="p-2 hover:bg-white/10 rounded-lg transition-colors"
-          >
-            <Settings className="w-5 h-5" />
-          </button>
-        </div>
-      </header>
+      <FullscreenVideoBackground onVideoReady={setVideoElement} />
 
-      {/* Main Content */}
-      <div className="relative z-10 flex-1 p-6 space-y-6">
-        {/* Settings Panel */}
-        {showSettings && (
-          <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-            <div className="bg-gray-900/95 backdrop-blur-sm rounded-xl p-6 max-w-4xl w-full max-h-[90vh] overflow-y-auto">
-              <div className="flex items-center justify-between mb-6">
-                <h2 className="text-2xl font-bold">Event Configuration</h2>
-                <button
-                  onClick={() => setShowSettings(false)}
-                  className="p-2 hover:bg-white/10 rounded-lg transition-colors"
-                >
-                  ✕
-                </button>
-              </div>
-              
-              <EventSetupWizard
-                onComplete={handleEventSetupComplete}
-                initialSetup={eventSetup}
-              />
-            </div>
-          </div>
-        )}
+      {/* Main UI Panels */}
+      <DraggablePanel
+        title="Track Library"
+        initialPosition={{ x: 20, y: 100 }}
+        initialSize={{ width: 350, height: 500 }}
+        accentColor="purple"
+      >
+        <TrackList
+          tracks={trackLibrary.tracks}
+          currentTrack={audioPlayer.currentTrack}
+          isPlaying={audioPlayer.isPlaying}
+          onTrackSelect={loadTrack}
+          onPlayToggle={audioPlayer.togglePlay}
+        />
+      </DraggablePanel>
 
-        {/* Control Panels Grid */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          {/* Track Library */}
-          <div className="bg-black/30 backdrop-blur-sm rounded-xl p-6 border border-white/10">
-            <div className="flex items-center space-x-2 mb-4">
-              <Music className="w-5 h-5 text-purple-400" />
-              <h3 className="text-lg font-semibold">Track Library</h3>
-            </div>
-            <TrackList
-              tracks={trackLibrary}
-              currentTrack={currentTrack}
-              onTrackSelect={loadTrack}
-              isPlaying={isPlaying}
-            />
-          </div>
+      <DraggablePanel
+        title="Face Recognition"
+        initialPosition={{ x: window.innerWidth - 370, y: 100 }}
+        initialSize={{ width: 350, height: 400 }}
+        accentColor="green"
+      >
+        <ServerSideAWSPanel
+          vipPeople={eventSetup?.vipPeople || []}
+          recognitionResults={awsFaceRecognition.recognitionResults}
+          isEnabled={awsFaceRecognition.isEnabled}
+          onToggle={awsFaceRecognition.toggleEnabled}
+          status={awsFaceRecognition.status}
+        />
+      </DraggablePanel>
 
-          {/* AI Video Agent */}
-          <div className="bg-black/30 backdrop-blur-sm rounded-xl p-6 border border-white/10">
-            <ContinuousAIAgentPanel
-              analysis={continuousAI.currentAnalysis}
-              isEnabled={continuousAI.isEnabled}
-              onToggle={continuousAI.toggleEnabled}
-              stats={continuousAI.stats}
-            />
-          </div>
+      <DraggablePanel
+        title="AI Video Agent"
+        initialPosition={{ x: 20, y: 620 }}
+        initialSize={{ width: 400, height: 350 }}
+        accentColor="blue"
+      >
+        <ContinuousAIAgentPanel
+          isActive={continuousAI.isActive}
+          onStartAgent={continuousAI.startAgent}
+          onStopAgent={continuousAI.stopAgent}
+          isAnalyzing={continuousAI.isAnalyzing}
+          lastResponse={continuousAI.lastResponse}
+          responseHistory={continuousAI.responseHistory}
+          agentStatus={continuousAI.agentStatus}
+          error={continuousAI.error}
+          onForceAnalysis={continuousAI.forceAnalysis}
+          conversationHistory={continuousAI.conversationHistory}
+          eventContext={eventSetup || defaultSetup}
+        />
+      </DraggablePanel>
 
-          {/* Face Recognition */}
-          <div className="bg-black/30 backdrop-blur-sm rounded-xl p-6 border border-white/10">
-            <div className="flex items-center space-x-2 mb-4">
-              <Camera className="w-5 h-5 text-green-400" />
-              <h3 className="text-lg font-semibold">Face Recognition</h3>
-            </div>
-            
-            <ServerSideAWSPanel
-              vipPeople={eventSetup?.vipPeople || []}
-              recognitionResults={awsFaceRecognition.recognitionResults}
-              isEnabled={awsFaceRecognition.isEnabled}
-              onToggle={awsFaceRecognition.toggleEnabled}
-              status={awsFaceRecognition.status}
-            />
-          </div>
-        </div>
+      <DraggablePanel
+        title="Event Dashboard"
+        initialPosition={{ x: window.innerWidth - 370, y: 520 }}
+        initialSize={{ width: 350, height: 400 }}
+        accentColor="yellow"
+      >
+        <SmartEventDashboard
+          eventDetails={eventSetup}
+          isActive={smartEventDJ.isActive}
+          eventStarted={smartEventDJ.eventStarted}
+          currentPhase={smartEventDJ.currentPhase}
+          recognizedVIPs={smartEventDJ.recognizedVIPs}
+          eventStatus={smartEventDJ.getEventStatus()}
+          upcomingMoments={smartEventDJ.getUpcomingMoments()}
+          triggeredMoments={smartEventDJ.triggeredMoments}
+          onStartEvent={smartEventDJ.startEvent}
+          onStopEvent={smartEventDJ.stopEvent}
+        />
+      </DraggablePanel>
 
-        {/* Event Dashboard */}
-        <div className="bg-black/30 backdrop-blur-sm rounded-xl p-6 border border-white/10">
-          <SmartEventDashboard
-            eventSetup={eventSetup}
-            isEventActive={isEventActive}
-            onStartEvent={handleStartEvent}
-            onStopEvent={handleStopEvent}
-            currentTrack={currentTrack}
-            isPlaying={isPlaying}
-            stats={{
-              totalTracks: trackLibrary.length,
-              playTime: 0,
-              vipRecognitions: awsFaceRecognition.recognitionResults.length,
-              aiInteractions: continuousAI.stats.totalInteractions
-            }}
-          />
-        </div>
+      <DraggablePanel
+        title="AI Vision"
+        initialPosition={{ x: 440, y: 100 }}
+        initialSize={{ width: 300, height: 350 }}
+        accentColor="pink"
+      >
+        <GeminiMoodDisplay
+          mood={geminiMood.mood}
+          energy={geminiMood.energy}
+          crowdSize={geminiMood.crowdSize}
+          confidence={geminiMood.confidence}
+          isAnalyzing={geminiMood.isAnalyzing}
+          lastAnalysis={geminiMood.lastAnalysis}
+          error={geminiMood.error}
+          enabled={geminiMood.enabled}
+          onTriggerAnalysis={geminiMood.triggerAnalysis}
+          onToggleEnabled={geminiMood.toggleEnabled}
+        />
+      </DraggablePanel>
 
-        {/* Now Playing & Controls */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          <div className="bg-black/30 backdrop-blur-sm rounded-xl p-6 border border-white/10">
+      <DraggablePanel
+        title="Voice System"
+        initialPosition={{ x: 440, y: 470 }}
+        initialSize={{ width: 300, height: 300 }}
+        accentColor="red"
+      >
+        <VoiceAnnouncements
+          mood={geminiMood.mood}
+          energy={geminiMood.energy}
+          crowdSize={geminiMood.crowdSize}
+          currentTrack={audioPlayer.currentTrack?.title || ''}
+          onAnnouncementStart={audioPlayer.duckAudio}
+          onAnnouncementEnd={audioPlayer.unduckAudio}
+        />
+      </DraggablePanel>
+
+      {/* Now Playing - Center Bottom */}
+      {audioPlayer.currentTrack && (
+        <div className="fixed bottom-32 left-1/2 transform -translate-x-1/2 z-40">
+          <div className="bg-black/20 backdrop-blur-xl rounded-2xl border border-white/20 p-6 shadow-2xl">
             <NowPlaying
-              track={currentTrack}
-              isPlaying={isPlaying}
-              onTogglePlay={togglePlayPause}
-              volume={volume}
-              onVolumeChange={setVolume}
+              currentTrack={audioPlayer.currentTrack}
+              isPlaying={audioPlayer.isPlaying}
+              currentTime={audioPlayer.currentTime}
+              duration={audioPlayer.duration}
+              volume={audioPlayer.volume}
+              isLoading={audioPlayer.isLoading}
+              error={audioPlayer.error}
+              onPlayToggle={audioPlayer.togglePlay}
+              onSeek={audioPlayer.seek}
+              onVolumeChange={audioPlayer.setVolume}
             />
           </div>
-
-          <div className="bg-black/30 backdrop-blur-sm rounded-xl p-6 border border-white/10">
-            <AudioVisualizer isPlaying={isPlaying} />
-          </div>
         </div>
-      </div>
+      )}
 
       {/* Floating Controls */}
       <FloatingControls
-        isPlaying={isPlaying}
-        onTogglePlay={togglePlayPause}
-        onNext={musicPlayer.nextTrack}
-        onPrevious={musicPlayer.previousTrack}
-        volume={volume}
-        onVolumeChange={setVolume}
+        isPlaying={audioPlayer.isPlaying}
+        onPlayToggle={audioPlayer.togglePlay}
+        onSettingsToggle={() => setShowSettings(!showSettings)}
+        onStartSession={handleStartSession}
+        hasStarted={hasStarted}
       />
+
+      {/* Settings Panel */}
+      {showSettings && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-black/80 backdrop-blur-xl rounded-3xl border border-white/20 p-8 w-full max-w-6xl max-h-[90vh] overflow-y-auto shadow-2xl">
+            <div className="flex items-center justify-between mb-6">
+              <h2 className="text-3xl font-bold text-white">DJ Tillu Settings</h2>
+              <button
+                onClick={() => setShowSettings(false)}
+                className="w-10 h-10 bg-white/20 rounded-full flex items-center justify-center text-white hover:bg-white/30 transition-colors"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-6">
+              {/* Event Configuration */}
+              <div className="bg-white/10 rounded-2xl p-6 border border-white/20">
+                <EventDetailsManager onEventSaved={(event) => console.log('Event saved:', event)} />
+              </div>
+
+              {/* Music Sources */}
+              <div className="bg-white/10 rounded-2xl p-6 border border-white/20">
+                <AudiusBrowser
+                  onTrackSelect={loadTrack}
+                  onAddToLibrary={trackLibrary.addTrack}
+                  currentMood={geminiMood.mood}
+                />
+              </div>
+
+              <div className="bg-white/10 rounded-2xl p-6 border border-white/20">
+                <SupabaseTrackManager
+                  onTrackSelect={loadTrack}
+                  onAddToLibrary={trackLibrary.addTrack}
+                />
+              </div>
+
+              <div className="bg-white/10 rounded-2xl p-6 border border-white/20">
+                <WhooshMoodBrowser
+                  onTrackSelect={loadTrack}
+                  onAddToLibrary={trackLibrary.addTrack}
+                  currentMood={geminiMood.mood}
+                />
+              </div>
+
+              {/* Mood Management */}
+              <div className="bg-white/10 rounded-2xl p-6 border border-white/20">
+                <MoodPlaylistManager
+                  tracks={trackLibrary.tracks}
+                  onPlayTrack={loadTrack}
+                />
+              </div>
+
+              {/* Audio Visualization */}
+              <div className="bg-white/10 rounded-2xl p-6 border border-white/20">
+                <AudioVisualizer
+                  isPlaying={audioPlayer.isPlaying}
+                  audioElement={audioPlayer.audioElement}
+                  mood={geminiMood.mood}
+                />
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
