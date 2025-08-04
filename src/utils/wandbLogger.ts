@@ -1,5 +1,4 @@
-import wandb from 'wandb';
-
+// Browser-compatible analytics logger (replaces wandb)
 interface DJMetrics {
   mood: string;
   energy: number;
@@ -46,7 +45,7 @@ interface CrowdResponse {
   geminiConfidence: number;
 }
 
-export class WandbDJLogger {
+export class BrowserDJLogger {
   private isInitialized = false;
   private sessionId: string;
   private sessionStartTime: number;
@@ -57,6 +56,7 @@ export class WandbDJLogger {
   private currentTrack: string = '';
   private moodHistory: Array<{ mood: string; timestamp: number; energy: number }> = [];
   private trackHistory: Array<{ track: string; timestamp: number; reason: string }> = [];
+  private analyticsData: Array<{ type: string; data: any; timestamp: number }> = [];
 
   constructor() {
     this.sessionId = `dj-session-${Date.now()}`;
@@ -65,32 +65,16 @@ export class WandbDJLogger {
 
   async initialize() {
     try {
-      console.log('🔄 Initializing wandb for DJ AlterEgo...');
+      console.log('🔄 Initializing browser analytics for DJ AlterEgo...');
       
-      await wandb.init({
-        project: 'dj-alterego',
-        entity: 'rohithv0898',
-        apiKey: 'ea9fd0db0a318a07e06857dfb82ca56bdbffe9d7',
-        config: {
-          app_version: '1.0.0',
-          session_id: this.sessionId,
-          ai_dj_enabled: true,
-          gemini_vision_enabled: true,
-          mood_analysis_interval: 10000,
-          track_change_threshold: 'mood_shift'
-        },
-        tags: ['ai-dj', 'live-performance', 'mood-analysis', 'gemini-vision'],
-        notes: 'Live DJ set with AI mood analysis and automatic track selection'
-      });
-
       this.isInitialized = true;
-      console.log('✅ wandb initialized successfully');
+      console.log('✅ Browser analytics initialized successfully');
       
       // Log session start
       this.logSessionStart();
       
     } catch (error) {
-      console.error('❌ Failed to initialize wandb:', error);
+      console.error('❌ Failed to initialize analytics:', error);
       this.isInitialized = false;
     }
   }
@@ -98,15 +82,16 @@ export class WandbDJLogger {
   private logSessionStart() {
     if (!this.isInitialized) return;
 
-    wandb.log({
+    const sessionData = {
       'session/start': 1,
       'session/id': this.sessionId,
       'session/timestamp': this.sessionStartTime,
       'session/platform': 'web',
       'session/ai_enabled': true
-    });
+    };
 
-    console.log('📊 Session start logged to wandb');
+    this.logToConsole('session_start', sessionData);
+    this.storeAnalytics('session_start', sessionData);
   }
 
   logMoodAnalysis(mood: string, energy: number, crowdSize: number, confidence: number) {
@@ -146,7 +131,8 @@ export class WandbDJLogger {
       'session/id': this.sessionId
     };
 
-    wandb.log(metrics);
+    this.logToConsole('mood_analysis', metrics);
+    this.storeAnalytics('mood_analysis', metrics);
 
     // Update history
     this.moodHistory.push({ mood, timestamp, energy });
@@ -181,7 +167,7 @@ export class WandbDJLogger {
       duration
     };
 
-    wandb.log({
+    const transitionData = {
       'transitions/mood_change': `${fromMood} → ${toMood}`,
       'transitions/energy_delta': energyChange,
       'transitions/duration_seconds': duration,
@@ -189,7 +175,10 @@ export class WandbDJLogger {
       'transitions/crowd_size': this.lastCrowdSize,
       'transitions/timestamp': timestamp,
       'session/id': this.sessionId
-    });
+    };
+
+    this.logToConsole('mood_transition', transitionData);
+    this.storeAnalytics('mood_transition', transitionData);
 
     console.log(`🔄 Mood transition logged: ${fromMood} → ${toMood} (${energyChange > 0 ? '+' : ''}${energyChange}% energy)`);
   }
@@ -209,19 +198,7 @@ export class WandbDJLogger {
       ? (timestamp - this.trackStartTime) / 1000 
       : 0;
 
-    const trackChange: TrackChange = {
-      previousTrack,
-      newTrack,
-      reason,
-      moodContext,
-      energyBefore: this.lastEnergy,
-      energyAfter: this.lastEnergy, // Will be updated after mood analysis
-      crowdSize: this.lastCrowdSize,
-      confidence: 0.8,
-      timestamp
-    };
-
-    wandb.log({
+    const trackData = {
       'tracks/previous': previousTrack,
       'tracks/new': newTrack,
       'tracks/change_reason': reason,
@@ -235,7 +212,10 @@ export class WandbDJLogger {
       'tracks/manual_override': reason === 'manual_override',
       'session/id': this.sessionId,
       'tracks/timestamp': timestamp
-    });
+    };
+
+    this.logToConsole('track_change', trackData);
+    this.storeAnalytics('track_change', trackData);
 
     // Update tracking
     this.currentTrack = newTrack;
@@ -253,17 +233,7 @@ export class WandbDJLogger {
   logCrowdResponse(engagement: number, trackPlaying: string, timeInTrack: number) {
     if (!this.isInitialized) return;
 
-    const crowdResponse: CrowdResponse = {
-      mood: this.lastMood,
-      energy: this.lastEnergy,
-      crowdSize: this.lastCrowdSize,
-      engagement,
-      trackPlaying,
-      timeInTrack,
-      geminiConfidence: 0.8 // Will be updated with actual confidence
-    };
-
-    wandb.log({
+    const crowdData = {
       'crowd/engagement': engagement,
       'crowd/size': this.lastCrowdSize,
       'crowd/energy_response': this.lastEnergy,
@@ -272,7 +242,10 @@ export class WandbDJLogger {
       'crowd/time_in_track': timeInTrack,
       'session/id': this.sessionId,
       'crowd/timestamp': Date.now()
-    });
+    };
+
+    this.logToConsole('crowd_response', crowdData);
+    this.storeAnalytics('crowd_response', crowdData);
 
     console.log(`👥 Crowd response logged: ${engagement}% engagement, ${this.lastCrowdSize} people`);
   }
@@ -280,7 +253,7 @@ export class WandbDJLogger {
   logAIDecision(decision: string, confidence: number, context: any) {
     if (!this.isInitialized) return;
 
-    wandb.log({
+    const aiData = {
       'ai/decision': decision,
       'ai/confidence': confidence,
       'ai/mood_context': context.mood || this.lastMood,
@@ -288,7 +261,10 @@ export class WandbDJLogger {
       'ai/crowd_context': context.crowdSize || this.lastCrowdSize,
       'ai/timestamp': Date.now(),
       'session/id': this.sessionId
-    });
+    };
+
+    this.logToConsole('ai_decision', aiData);
+    this.storeAnalytics('ai_decision', aiData);
 
     console.log(`🤖 AI decision logged: ${decision} (${Math.round(confidence * 100)}% confidence)`);
   }
@@ -296,14 +272,17 @@ export class WandbDJLogger {
   logUserInteraction(action: string, details: any) {
     if (!this.isInitialized) return;
 
-    wandb.log({
+    const interactionData = {
       'user/action': action,
       'user/details': JSON.stringify(details),
       'user/mood_context': this.lastMood,
       'user/energy_context': this.lastEnergy,
       'user/timestamp': Date.now(),
       'session/id': this.sessionId
-    });
+    };
+
+    this.logToConsole('user_interaction', interactionData);
+    this.storeAnalytics('user_interaction', interactionData);
 
     console.log(`👤 User interaction logged: ${action}`);
   }
@@ -317,7 +296,7 @@ export class WandbDJLogger {
     const avgEnergy = this.moodHistory.reduce((sum, m) => sum + m.energy, 0) / this.moodHistory.length;
     const avgCrowdSize = this.lastCrowdSize; // Simplified
 
-    wandb.log({
+    const summaryData = {
       'session/duration_minutes': sessionDuration,
       'session/total_tracks': totalTracks,
       'session/mood_changes': moodChanges,
@@ -327,7 +306,10 @@ export class WandbDJLogger {
       'session/mood_changes_per_minute': moodChanges / sessionDuration,
       'session/end_timestamp': Date.now(),
       'session/id': this.sessionId
-    });
+    };
+
+    this.logToConsole('session_summary', summaryData);
+    this.storeAnalytics('session_summary', summaryData);
 
     console.log(`📊 Session summary logged: ${sessionDuration.toFixed(1)}min, ${totalTracks} tracks, ${moodChanges} mood changes`);
   }
@@ -354,19 +336,67 @@ export class WandbDJLogger {
     return Math.min(100, (crowdSize * energy) / 10);
   }
 
+  private logToConsole(type: string, data: any) {
+    console.log(`📊 Analytics [${type}]:`, data);
+  }
+
+  private storeAnalytics(type: string, data: any) {
+    this.analyticsData.push({
+      type,
+      data,
+      timestamp: Date.now()
+    });
+
+    // Keep only last 1000 entries
+    if (this.analyticsData.length > 1000) {
+      this.analyticsData = this.analyticsData.slice(-1000);
+    }
+
+    // Store in localStorage for persistence
+    try {
+      localStorage.setItem('dj_analytics', JSON.stringify(this.analyticsData.slice(-100)));
+    } catch (error) {
+      console.warn('Failed to store analytics in localStorage:', error);
+    }
+  }
+
+  // Get analytics data for export
+  getAnalyticsData() {
+    return this.analyticsData;
+  }
+
+  // Export analytics as JSON
+  exportAnalytics() {
+    const data = {
+      sessionId: this.sessionId,
+      sessionStartTime: this.sessionStartTime,
+      sessionDuration: (Date.now() - this.sessionStartTime) / 1000 / 60,
+      analytics: this.analyticsData
+    };
+
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `dj-analytics-${this.sessionId}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+
+    console.log('📊 Analytics exported successfully');
+  }
+
   async finish() {
     if (!this.isInitialized) return;
 
     this.logSessionSummary();
     
     try {
-      await wandb.finish();
-      console.log('✅ wandb session finished');
+      console.log('✅ Browser analytics session finished');
     } catch (error) {
-      console.error('❌ Error finishing wandb session:', error);
+      console.error('❌ Error finishing analytics session:', error);
     }
   }
 }
 
 // Singleton instance
-export const djLogger = new WandbDJLogger();
+export const djLogger = new BrowserDJLogger();
