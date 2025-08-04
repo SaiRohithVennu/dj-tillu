@@ -18,6 +18,8 @@ import { WhooshMoodBrowser } from './components/WhooshMoodBrowser';
 import { EventDetailsManager } from './components/EventDetailsManager';
 import { FaceRecognitionSystem } from './components/FaceRecognitionSystem';
 import { SmartEventDashboard } from './components/SmartEventDashboard';
+import { AWSFaceRecognitionPanel } from './components/AWSFaceRecognitionPanel';
+import { useAWSFaceRecognition } from './hooks/useAWSFaceRecognition';
 import { useAudioPlayer } from './hooks/useAudioPlayer';
 import { useGeminiMoodAnalysis } from './hooks/useGeminiMoodAnalysis';
 import { useAIMoodDJ } from './hooks/useAIMoodDJ';
@@ -59,6 +61,7 @@ function App() {
   const [videoElement, setVideoElement] = useState<HTMLVideoElement | null>(null);
   const [hasSessionStarted, setHasSessionStarted] = useState(false);
   const [showEventSetup, setShowEventSetup] = useState(false);
+  const [eventId] = useState(() => `event-${Date.now()}`);
   
   const {
     isPlaying,
@@ -149,6 +152,15 @@ function App() {
     onAnnouncement: triggerAnnouncement,
     isPlaying,
     currentTrack
+  });
+
+  // AWS Face Recognition
+  const awsFaceRecognition = useAWSFaceRecognition({
+    videoElement,
+    vipPeople: eventSetup?.vipPeople || [],
+    eventId,
+    enabled: isEventActive && eventSetup !== null,
+    onVIPRecognized: handleVIPRecognized
   });
 
   // Smart Event Emcee (new enhanced system)
@@ -355,17 +367,21 @@ function App() {
 
         {/* Face Recognition - Left side under Track Library */}
         <DraggablePanel
-          title="Face Recognition"
+          title="AWS Face Recognition"
           initialPosition={{ x: 20, y: 520 }}
           initialSize={{ width: 320, height: 280 }}
           className="z-40"
           accentColor="blue"
         >
-          <FaceRecognitionSystem
-            videoElement={videoElement}
-            vipGuests={eventDetails?.vipGuests || []}
-            onVIPRecognized={handleVIPRecognized}
-            enabled={isEventActive}
+          <AWSFaceRecognitionPanel
+            isInitialized={awsFaceRecognition.isInitialized}
+            isAnalyzing={awsFaceRecognition.isAnalyzing}
+            recognizedPeople={awsFaceRecognition.recognizedPeople}
+            lastAnalysis={awsFaceRecognition.lastAnalysis}
+            error={awsFaceRecognition.error}
+            crowdAnalysis={awsFaceRecognition.crowdAnalysis}
+            vipPeople={eventSetup?.vipPeople || []}
+            enabled={isEventActive && eventSetup !== null}
           />
         </DraggablePanel>
 
