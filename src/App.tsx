@@ -1,151 +1,195 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { Play, Pause, SkipForward, SkipBack, Volume2, Settings, Users, Mic, Camera, Music, Brain, Eye, Zap } from 'lucide-react';
-import { useAudioPlayer } from './hooks/useAudioPlayer';
-import { useTrackLibrary } from './hooks/useTrackLibrary';
-import { useGeminiMoodAnalysis } from './hooks/useGeminiMoodAnalysis';
-import { useOpenAIEventHost } from './hooks/useOpenAIEventHost';
-import { useContinuousAIAgent } from './hooks/useContinuousAIAgent';
-import { useServerSideAWSFaceRecognition } from './hooks/useServerSideAWSFaceRecognition';
-import { DJInterface } from './components/DJInterface';
-import { TrackList } from './components/TrackList';
-import { NowPlaying } from './components/NowPlaying';
-import { GeminiMoodDisplay } from './components/GeminiMoodDisplay';
-import { OpenAIEventHostPanel } from './components/OpenAIEventHostPanel';
-import { ContinuousAIAgentPanel } from './components/ContinuousAIAgentPanel';
-import { ServerSideAWSPanel } from './components/ServerSideAWSPanel';
+import React, { useState, useEffect } from 'react';
 import { EventSetupWizard } from './components/EventSetupWizard';
-import { DraggablePanel } from './components/DraggablePanel';
+import { SmartEventDashboard } from './components/SmartEventDashboard';
+import { DJInterface } from './components/DJInterface';
+import { NowPlaying } from './components/NowPlaying';
+import { TrackList } from './components/TrackList';
+import { AIDJPanel } from './components/AIDJPanel';
+import { MoodDisplay } from './components/MoodDisplay';
+import { GeminiMoodDisplay } from './components/GeminiMoodDisplay';
+import { VideoAnalyzer } from './components/VideoAnalyzer';
+import { AudiusBrowser } from './components/AudiusBrowser';
+import { FMABrowser } from './components/FMABrowser';
+import { WhooshMoodBrowser } from './components/WhooshMoodBrowser';
+import { AudioVisualizer } from './components/AudioVisualizer';
+import { AudioDebugger } from './components/AudioDebugger';
+import { VoiceAnnouncements } from './components/VoiceAnnouncements';
+import { DynamicBackground } from './components/DynamicBackground';
 import { FullscreenVideoBackground } from './components/FullscreenVideoBackground';
 import { FloatingControls } from './components/FloatingControls';
-
-interface Track {
-  id: string;
-  title: string;
-  artist: string;
-  duration: number;
-  bpm: number;
-  genre: string;
-  file_path: string;
-  file_size: number;
-  audio_url?: string;
-  album_art?: string;
-  created_at?: string;
-}
+import { DraggablePanel } from './components/DraggablePanel';
+import { AWSFaceRecognitionPanel } from './components/AWSFaceRecognitionPanel';
+import { ServerSideAWSPanel } from './components/ServerSideAWSPanel';
+import { OpenAIEventHostPanel } from './components/OpenAIEventHostPanel';
+import { ContinuousAIAgentPanel } from './components/ContinuousAIAgentPanel';
+import { SupabaseTrackManager } from './components/SupabaseTrackManager';
+import { SupabaseTrackUploader } from './components/SupabaseTrackUploader';
+import { useAudioPlayer } from './hooks/useAudioPlayer';
+import { useTrackLibrary } from './hooks/useTrackLibrary';
+import { useSmartEventDJ } from './hooks/useSmartEventDJ';
+import { useAIMoodDJ } from './hooks/useAIMoodDJ';
+import { useMoodAnalysis } from './hooks/useMoodAnalysis';
+import { useGeminiMoodAnalysis } from './hooks/useGeminiMoodAnalysis';
+import { useAWSFaceRecognition } from './hooks/useAWSFaceRecognition';
+import { useServerSideAWSFaceRecognition } from './hooks/useServerSideAWSFaceRecognition';
+import { useOpenAIEventHost } from './hooks/useOpenAIEventHost';
+import { useContinuousAIAgent } from './hooks/useContinuousAIAgent';
+import { useSmartEventEmcee } from './hooks/useSmartEventEmcee';
+import { tracks } from './data/tracks';
+import { moodPlaylists } from './data/moodPlaylists';
 
 interface EventDetails {
-  name: string;
-  type: string;
-  vipPhotos: File[];
-  description?: string;
+  eventName: string;
+  eventType: string;
+  vipPhotos: Array<{ name: string; photo: string }>;
+  eventDate: string;
+  venue: string;
+  expectedAttendees: number;
+  musicPreferences: string[];
+  specialRequests: string;
 }
 
 function App() {
-  const [currentTrack, setCurrentTrack] = useState<Track | null>(null);
   const [eventDetails, setEventDetails] = useState<EventDetails | null>(null);
-  const [showSetupWizard, setShowSetupWizard] = useState(true);
+  const [showSetup, setShowSetup] = useState(true);
   const [sessionStarted, setSessionStarted] = useState(false);
-  const videoRef = useRef<HTMLVideoElement>(null);
 
-  // Define functions before hooks that use them
-  const loadTrack = (track: Track) => {
-    setCurrentTrack(track);
-    play(track.audio_url || '');
+  // Define functions before using them in hooks
+  const loadTrack = (track: any) => {
+    console.log('Loading track:', track);
   };
 
   const triggerAnnouncement = (message: string, type: 'info' | 'warning' | 'celebration' = 'info') => {
-    console.log(`[DJ Announcement - ${type.toUpperCase()}]: ${message}`);
-    // This will be handled by the voice system
+    console.log(`Announcement (${type}):`, message);
   };
 
-  const handleVIPRecognized = (personName: string, confidence: number) => {
-    triggerAnnouncement(`VIP ${personName} has arrived! Welcome to the party!`, 'celebration');
+  const handleVIPRecognized = (vipName: string) => {
+    triggerAnnouncement(`VIP ${vipName} has arrived! Welcome to the event!`, 'celebration');
   };
 
   const handleEventSetupComplete = (details: EventDetails) => {
     setEventDetails(details);
-    setShowSetupWizard(false);
+    setShowSetup(false);
+    setSessionStarted(true);
+    triggerAnnouncement(`Welcome to ${details.eventName}! Let's get this party started!`, 'celebration');
   };
 
   const handleSkipSetup = () => {
-    setShowSetupWizard(false);
+    setShowSetup(false);
+    setSessionStarted(true);
+    triggerAnnouncement('DJ session started! Ready to rock!', 'info');
   };
 
   const handleStartSession = () => {
     setSessionStarted(true);
+    triggerAnnouncement('DJ Tillu is now live! Let the music play!', 'celebration');
   };
 
-  // Initialize hooks after function definitions
+  // Audio and music hooks
   const { 
+    currentTrack, 
     isPlaying, 
-    currentTime, 
-    duration, 
     volume, 
+    currentTime, 
+    duration,
     play, 
     pause, 
-    seek, 
-    setVolume 
+    stop, 
+    setVolume, 
+    seekTo 
   } = useAudioPlayer();
 
-  const { tracks, loading: tracksLoading } = useTrackLibrary();
-  
+  const { 
+    tracks: libraryTracks, 
+    loading: tracksLoading, 
+    searchTracks, 
+    addTrack 
+  } = useTrackLibrary();
+
+  // AI and mood analysis hooks
   const { 
     currentMood, 
-    confidence, 
-    isAnalyzing, 
-    startAnalysis, 
-    stopAnalysis 
-  } = useGeminiMoodAnalysis(videoRef);
+    moodHistory, 
+    suggestedTracks: aiSuggestedTracks,
+    isAnalyzing: aiAnalyzing 
+  } = useAIMoodDJ();
 
-  const {
-    isHosting,
-    currentAnnouncement,
-    startHosting,
-    stopHosting,
-    makeAnnouncement
-  } = useOpenAIEventHost(eventDetails);
+  const { 
+    mood: detectedMood, 
+    confidence: moodConfidence, 
+    isAnalyzing: moodAnalyzing 
+  } = useMoodAnalysis();
 
-  const {
-    isActive: aiAgentActive,
-    currentAction,
-    insights,
-    startAgent,
-    stopAgent
-  } = useContinuousAIAgent({
-    videoRef,
-    currentTrack,
-    eventDetails,
-    triggerAnnouncement,
-    loadTrack
-  });
+  const { 
+    mood: geminiMood, 
+    confidence: geminiConfidence, 
+    isAnalyzing: geminiAnalyzing,
+    emotions: geminiEmotions 
+  } = useGeminiMoodAnalysis();
 
-  const {
-    isRecognizing,
-    recognizedPeople,
-    startRecognition,
-    stopRecognition,
-    addVIPPerson
-  } = useServerSideAWSFaceRecognition({
-    onVIPRecognized: handleVIPRecognized
-  });
+  // Smart event and DJ hooks
+  const { 
+    isActive: smartDJActive, 
+    currentPlaylist, 
+    nextTrack: smartNextTrack 
+  } = useSmartEventDJ(eventDetails || null);
 
-  // Auto-start systems when session begins
+  // Face recognition hooks
+  const vipPeople = eventDetails?.vipPhotos?.map(vip => ({
+    name: vip.name,
+    imageUrl: vip.photo,
+    id: vip.name.toLowerCase().replace(/\s+/g, '-')
+  })) || [];
+
+  const { 
+    isEnabled: faceRecognitionEnabled, 
+    recognizedFaces, 
+    startRecognition: startFaceRecognition, 
+    stopRecognition: stopFaceRecognition 
+  } = useAWSFaceRecognition(vipPeople);
+
+  const { 
+    isEnabled: serverFaceRecognitionEnabled, 
+    recognizedFaces: serverRecognizedFaces, 
+    startRecognition: startServerFaceRecognition, 
+    stopRecognition: stopServerFaceRecognition 
+  } = useServerSideAWSFaceRecognition(vipPeople);
+
+  // AI host and agent hooks
+  const { 
+    isActive: hostActive, 
+    currentAnnouncement, 
+    makeAnnouncement 
+  } = useOpenAIEventHost(eventDetails || null);
+
+  const { 
+    isActive: agentActive, 
+    currentAction, 
+    insights 
+  } = useContinuousAIAgent(eventDetails || null, triggerAnnouncement);
+
+  const { 
+    isActive: emceeActive, 
+    currentScript, 
+    generateIntroduction 
+  } = useSmartEventEmcee(eventDetails || null);
+
+  // Handle VIP recognition
   useEffect(() => {
-    if (sessionStarted && eventDetails) {
-      startAnalysis();
-      startHosting();
-      startAgent();
-      
-      // Add VIP photos to face recognition
-      if (eventDetails.vipPhotos.length > 0) {
-        eventDetails.vipPhotos.forEach((photo, index) => {
-          addVIPPerson(`VIP-${index + 1}`, photo);
-        });
-        startRecognition();
-      }
+    if (recognizedFaces.length > 0) {
+      const latestFace = recognizedFaces[recognizedFaces.length - 1];
+      handleVIPRecognized(latestFace.name);
     }
-  }, [sessionStarted, eventDetails]);
+  }, [recognizedFaces]);
 
-  if (showSetupWizard) {
+  useEffect(() => {
+    if (serverRecognizedFaces.length > 0) {
+      const latestFace = serverRecognizedFaces[serverRecognizedFaces.length - 1];
+      handleVIPRecognized(latestFace.name);
+    }
+  }, [serverRecognizedFaces]);
+
+  if (showSetup) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-purple-900 via-blue-900 to-indigo-900">
         <EventSetupWizard
@@ -158,196 +202,153 @@ function App() {
 
   return (
     <div className="min-h-screen bg-black text-white overflow-hidden relative">
-      {/* Fullscreen Video Background */}
-      <FullscreenVideoBackground ref={videoRef} />
+      {/* Background */}
+      <FullscreenVideoBackground />
+      <DynamicBackground mood={geminiMood || detectedMood || 'neutral'} />
       
       {/* Main Interface */}
       <div className="relative z-10 p-4 space-y-4">
-        {/* Header */}
-        <div className="flex items-center justify-between bg-black/20 backdrop-blur-sm rounded-lg p-4">
-          <div className="flex items-center space-x-4">
-            <div className="flex items-center space-x-2">
-              <Zap className="w-8 h-8 text-yellow-400" />
-              <h1 className="text-2xl font-bold bg-gradient-to-r from-yellow-400 to-orange-500 bg-clip-text text-transparent">
-                DJ Tillu
-              </h1>
-            </div>
-            {eventDetails && (
-              <div className="text-sm text-gray-300">
-                <span className="font-medium">{eventDetails.name}</span>
-                <span className="mx-2">•</span>
-                <span className="capitalize">{eventDetails.type}</span>
-              </div>
-            )}
+        {/* Event Dashboard */}
+        {eventDetails && (
+          <SmartEventDashboard 
+            eventDetails={eventDetails}
+            onStartSession={handleStartSession}
+          />
+        )}
+
+        {/* Core DJ Interface */}
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+          <div className="lg:col-span-2 space-y-4">
+            <DJInterface 
+              currentTrack={currentTrack}
+              isPlaying={isPlaying}
+              volume={volume}
+              onPlay={play}
+              onPause={pause}
+              onStop={stop}
+              onVolumeChange={setVolume}
+            />
+            
+            <NowPlaying 
+              track={currentTrack}
+              isPlaying={isPlaying}
+              currentTime={currentTime}
+              duration={duration}
+              onSeek={seekTo}
+            />
           </div>
-          
-          <div className="flex items-center space-x-2">
-            {sessionStarted && (
-              <>
-                <div className="flex items-center space-x-1 text-green-400">
-                  <div className="w-2 h-2 bg-green-400 rounded-full animate-pulse"></div>
-                  <span className="text-xs">LIVE</span>
-                </div>
-                {isAnalyzing && (
-                  <div className="flex items-center space-x-1 text-blue-400">
-                    <Eye className="w-4 h-4" />
-                    <span className="text-xs">AI Vision</span>
-                  </div>
-                )}
-                {aiAgentActive && (
-                  <div className="flex items-center space-x-1 text-purple-400">
-                    <Brain className="w-4 h-4" />
-                    <span className="text-xs">AI Agent</span>
-                  </div>
-                )}
-              </>
-            )}
+
+          <div className="space-y-4">
+            <AudioVisualizer isPlaying={isPlaying} />
+            <MoodDisplay 
+              mood={detectedMood}
+              confidence={moodConfidence}
+              isAnalyzing={moodAnalyzing}
+            />
+            <GeminiMoodDisplay 
+              mood={geminiMood}
+              confidence={geminiConfidence}
+              emotions={geminiEmotions}
+              isAnalyzing={geminiAnalyzing}
+            />
           </div>
         </div>
 
-        {/* Start Session Button */}
-        {!sessionStarted && (
-          <div className="flex justify-center">
-            <button
-              onClick={handleStartSession}
-              className="bg-gradient-to-r from-green-500 to-blue-500 hover:from-green-600 hover:to-blue-600 px-8 py-4 rounded-lg font-bold text-lg transition-all duration-200 transform hover:scale-105"
-            >
-              🎉 Start DJ Session
-            </button>
-          </div>
-        )}
+        {/* Track Management */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+          <TrackList 
+            tracks={libraryTracks}
+            onTrackSelect={loadTrack}
+            currentTrack={currentTrack}
+          />
+          <AIDJPanel 
+            currentMood={currentMood}
+            suggestedTracks={aiSuggestedTracks}
+            onTrackSelect={loadTrack}
+            isAnalyzing={aiAnalyzing}
+          />
+        </div>
 
-        {/* Main Content Grid */}
-        {sessionStarted && (
-          <div className="grid grid-cols-12 gap-4 h-[calc(100vh-200px)]">
-            {/* Left Panel - Track Library */}
-            <div className="col-span-3">
-              <DraggablePanel
-                title="Track Library"
-                icon={<Music className="w-4 h-4" />}
-                defaultPosition={{ x: 20, y: 100 }}
-                className="h-full"
-              >
-                <TrackList
-                  tracks={tracks}
-                  onTrackSelect={loadTrack}
-                  currentTrack={currentTrack}
-                  loading={tracksLoading}
-                />
-              </DraggablePanel>
-            </div>
+        {/* Music Browsers */}
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+          <AudiusBrowser onTrackSelect={loadTrack} />
+          <FMABrowser onTrackSelect={loadTrack} />
+          <WhooshMoodBrowser 
+            currentMood={geminiMood || detectedMood || 'neutral'}
+            onTrackSelect={loadTrack}
+          />
+        </div>
 
-            {/* Center Panel - DJ Interface */}
-            <div className="col-span-6">
-              <div className="space-y-4 h-full">
-                {/* Now Playing */}
-                <DraggablePanel
-                  title="Now Playing"
-                  icon={<Play className="w-4 h-4" />}
-                  defaultPosition={{ x: 400, y: 50 }}
-                >
-                  <NowPlaying
-                    track={currentTrack}
-                    isPlaying={isPlaying}
-                    currentTime={currentTime}
-                    duration={duration}
-                    onPlayPause={() => isPlaying ? pause() : play()}
-                    onSeek={seek}
-                  />
-                </DraggablePanel>
-
-                {/* DJ Controls */}
-                <DraggablePanel
-                  title="DJ Controls"
-                  icon={<Settings className="w-4 h-4" />}
-                  defaultPosition={{ x: 400, y: 250 }}
-                >
-                  <DJInterface
-                    isPlaying={isPlaying}
-                    volume={volume}
-                    onPlayPause={() => isPlaying ? pause() : play()}
-                    onVolumeChange={setVolume}
-                    onNext={() => {/* Handle next track */}}
-                    onPrevious={() => {/* Handle previous track */}}
-                  />
-                </DraggablePanel>
-              </div>
-            </div>
-
-            {/* Right Panel - AI Systems */}
-            <div className="col-span-3 space-y-4">
-              {/* Mood Analysis */}
-              <DraggablePanel
-                title="AI Mood Analysis"
-                icon={<Eye className="w-4 h-4" />}
-                defaultPosition={{ x: 1200, y: 100 }}
-              >
-                <GeminiMoodDisplay
-                  mood={currentMood}
-                  confidence={confidence}
-                  isAnalyzing={isAnalyzing}
-                  onToggleAnalysis={() => isAnalyzing ? stopAnalysis() : startAnalysis()}
-                />
-              </DraggablePanel>
-
-              {/* AI Event Host */}
-              <DraggablePanel
-                title="AI Event Host"
-                icon={<Mic className="w-4 h-4" />}
-                defaultPosition={{ x: 1200, y: 300 }}
-              >
-                <OpenAIEventHostPanel
-                  isHosting={isHosting}
-                  currentAnnouncement={currentAnnouncement}
-                  onToggleHosting={() => isHosting ? stopHosting() : startHosting()}
-                  onMakeAnnouncement={makeAnnouncement}
-                />
-              </DraggablePanel>
-
-              {/* Continuous AI Agent */}
-              <DraggablePanel
-                title="AI Agent"
-                icon={<Brain className="w-4 h-4" />}
-                defaultPosition={{ x: 1200, y: 500 }}
-              >
-                <ContinuousAIAgentPanel
-                  isActive={aiAgentActive}
-                  currentAction={currentAction}
-                  insights={insights}
-                  onToggle={() => aiAgentActive ? stopAgent() : startAgent()}
-                />
-              </DraggablePanel>
-
-              {/* Face Recognition */}
-              {eventDetails?.vipPhotos.length > 0 && (
-                <DraggablePanel
-                  title="VIP Recognition"
-                  icon={<Users className="w-4 h-4" />}
-                  defaultPosition={{ x: 1200, y: 700 }}
-                >
-                  <ServerSideAWSPanel
-                    isRecognizing={isRecognizing}
-                    recognizedPeople={recognizedPeople}
-                    onToggleRecognition={() => isRecognizing ? stopRecognition() : startRecognition()}
-                    vipCount={eventDetails.vipPhotos.length}
-                  />
-                </DraggablePanel>
-              )}
-            </div>
-          </div>
-        )}
+        {/* Supabase Track Management */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+          <SupabaseTrackUploader />
+          <SupabaseTrackManager onTrackSelect={loadTrack} />
+        </div>
       </div>
 
-      {/* Floating Controls */}
-      {sessionStarted && (
-        <FloatingControls
+      {/* Draggable Panels */}
+      <DraggablePanel title="Video Analysis" initialPosition={{ x: 20, y: 100 }}>
+        <VideoAnalyzer />
+      </DraggablePanel>
+
+      <DraggablePanel title="Voice Announcements" initialPosition={{ x: 20, y: 300 }}>
+        <VoiceAnnouncements />
+      </DraggablePanel>
+
+      <DraggablePanel title="Audio Debugger" initialPosition={{ x: 20, y: 500 }}>
+        <AudioDebugger 
+          currentTrack={currentTrack}
           isPlaying={isPlaying}
           volume={volume}
-          onPlayPause={() => isPlaying ? pause() : play()}
-          onVolumeChange={setVolume}
-          currentTrack={currentTrack}
         />
+      </DraggablePanel>
+
+      {/* Face Recognition Panels */}
+      {eventDetails && (
+        <>
+          <DraggablePanel title="AWS Face Recognition" initialPosition={{ x: 300, y: 100 }}>
+            <AWSFaceRecognitionPanel 
+              vipPeople={vipPeople}
+              onVIPRecognized={handleVIPRecognized}
+            />
+          </DraggablePanel>
+
+          <DraggablePanel title="Server-Side Face Recognition" initialPosition={{ x: 300, y: 300 }}>
+            <ServerSideAWSPanel 
+              vipPeople={vipPeople}
+              onVIPRecognized={handleVIPRecognized}
+            />
+          </DraggablePanel>
+        </>
       )}
+
+      {/* AI Host and Agent Panels */}
+      {eventDetails && (
+        <>
+          <DraggablePanel title="OpenAI Event Host" initialPosition={{ x: 600, y: 100 }}>
+            <OpenAIEventHostPanel 
+              eventDetails={eventDetails}
+              onAnnouncement={triggerAnnouncement}
+            />
+          </DraggablePanel>
+
+          <DraggablePanel title="Continuous AI Agent" initialPosition={{ x: 600, y: 300 }}>
+            <ContinuousAIAgentPanel 
+              eventDetails={eventDetails}
+              onAction={triggerAnnouncement}
+            />
+          </DraggablePanel>
+        </>
+      )}
+
+      {/* Floating Controls */}
+      <FloatingControls 
+        isPlaying={isPlaying}
+        volume={volume}
+        onPlay={play}
+        onPause={pause}
+        onVolumeChange={setVolume}
+      />
     </div>
   );
 }
