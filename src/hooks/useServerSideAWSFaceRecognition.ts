@@ -1,15 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { serverSideAWS } from '../utils/serverSideAWS';
-
-interface VIPPerson {
-  id: string;
-  name: string;
-  role: string;
-  imageFile?: File;
-  imageUrl?: string;
-  recognitionCount: number;
-  lastSeen?: Date;
-}
+import { serverSideAWS, VIPPerson, FaceMatch, CrowdAnalysis } from '../utils/serverSideAWS';
 
 interface UseServerSideAWSFaceRecognitionProps {
   videoElement: HTMLVideoElement | null;
@@ -26,70 +16,72 @@ export const useServerSideAWSFaceRecognition = ({
   enabled,
   onVIPRecognized
 }: UseServerSideAWSFaceRecognitionProps) => {
-  const [isEnabled, setIsEnabled] = useState(false);
-  const [status, setStatus] = useState<string>('disabled');
-  const [recognitionResults, setRecognitionResults] = useState<VIPPerson[]>([]);
   const [isInitialized, setIsInitialized] = useState(false);
+  const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const [recognizedPeople, setRecognizedPeople] = useState<VIPPerson[]>([]);
+  const [lastAnalysis, setLastAnalysis] = useState<Date | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [crowdAnalysis, setCrowdAnalysis] = useState<CrowdAnalysis>({
+    faceCount: 0,
+    emotions: [],
+    averageAge: 0,
+    dominantEmotion: 'neutral'
+  });
 
   const intervalRef = useRef<NodeJS.Timeout>();
   const initializationRef = useRef<boolean>(false);
 
-  // Initialize AWS services when VIP people are available
+  // Initialize server-side AWS services
   useEffect(() => {
     const initialize = async () => {
-      if (initializationRef.current || !vipPeople.length || !isEnabled) return;
+      if (initializationRef.current || !vipPeople.length || !enabled) return;
       
       initializationRef.current = true;
-      setStatus('initializing');
       setError(null);
 
       try {
-        console.log('🔧 Initializing server-side AWS services for', vipPeople.length, 'VIP people...');
+        console.log('🔧 Initializing server-side AWS services...');
         
-        // Log VIP people being indexed
-        vipPeople.forEach(person => {
-          console.log(`👤 Indexing VIP: ${person.name} (${person.role}) - Has photo: ${!!person.imageFile}`);
-        });
-
         const result = await serverSideAWS.initializeEvent(eventId, vipPeople);
         
         if (result.success) {
           setIsInitialized(true);
-          setStatus('active');
-          console.log('✅ Server-side AWS initialized successfully!');
+          console.log(`✅ Server-side AWS initialized: ${result.vipCount} VIPs indexed`);
         } else {
-          throw new Error(result.message || 'AWS initialization failed');
+          throw new Error(result.message);
         }
 
       } catch (error: any) {
         console.error('❌ Server-side AWS initialization failed:', error);
-        setError(error.message);
-        setStatus('error');
+        setError(`Initialization failed: ${error.message}`);
         setIsInitialized(false);
       }
     };
 
-    if (vipPeople.length > 0 && isEnabled) {
+    if (vipPeople.length > 0 && enabled) {
       initialize();
-    } else if (vipPeople.length === 0) {
-      setStatus('disabled');
-      setIsInitialized(false);
-      initializationRef.current = false;
     }
-  }, [vipPeople, eventId, isEnabled]);
+  }, [vipPeople, eventId, enabled]);
 
   // Main recognition loop
   useEffect(() => {
-    if (!isEnabled || !isInitialized || !videoElement) {
+    if (!enabled || !isInitialized || !videoElement) {
       return;
     }
 
     const runRecognition = async () => {
+      if (isAnalyzing) return;
+
+      setIsAnalyzing(true);
+      setError(null);
+
       try {
         const result = await serverSideAWS.recognizeFaces(eventId, videoElement);
         
-        // Process recognition results
+        // Update crowd analysis
+        setCrowdAnalysis(result.crowdAnalysis);
+
+        // Process VIP matches
         for (const match of result.matches) {
           if (match.confidence > 75) {
             const vipPerson = vipPeople.find(p => p.id === match.personId);
@@ -100,7 +92,7 @@ export const useServerSideAWSFaceRecognition = ({
                 lastSeen: new Date()
               };
 
-              setRecognitionResults(prev => {
+              setRecognizedPeople(prev => {
                 const existing = prev.find(p => p.id === vipPerson.id);
                 if (existing) {
                   return prev.map(p => p.id === vipPerson.id ? updatedPerson : p);
@@ -112,21 +104,50 @@ export const useServerSideAWSFaceRecognition = ({
               // Trigger recognition callback
               onVIPRecognized(updatedPerson);
               
-              console.log(`🎯 🎉 VIP RECOGNIZED: ${vipPerson.name} (${match.confidence.toFixed(1)}% confidence)`);
+              console.log(`🎯 VIP RECOGNIZED: ${vipPerson.name} (${vipPerson.role}) detected with ${match.confidence.toFixed(1)}% confidence!`);
+              
+              // Trigger personalized announcement (only once per 2 minutes per person)
+              const now = Date.now();
+              const lastAnnouncementKey = `last_announcement_${vipPerson.id}`;
+              const lastAnnouncementTime = parseInt(localStorage.getItem(lastAnnouncementKey) || '0');
+              
+              if (now - lastAnnouncementTime > 120000) { // 2 minutes
+                localStorage.setItem(lastAnnouncementKey, now.toString());
+                
+                // Generate personalized announcement based on role and context
+                const personalizedAnnouncement = generatePersonalizedAnnouncement(vipPerson, match.confidence);
+                
+                // Trigger the announcement through the voice system
+                if (window.triggerPersonAnnouncement) {
+                  window.triggerPersonAnnouncement(vipPerson.name, personalizedAnnouncement);
+                }
+                
+                // Show browser notification for successful recognition
+                if ('Notification' in window && Notification.permission === 'granted') {
+                  new Notification(`🎯 VIP Detected!`, {
+                    body: personalizedAnnouncement,
+                    icon: vipPerson.imageUrl
+                  });
+                }
+              }
             }
           }
         }
 
+        setLastAnalysis(new Date());
+
       } catch (error: any) {
-        console.error('❌ Face recognition error:', error);
-        setError(error.message);
+        console.error('❌ Server-side face recognition error:', error);
+        setError(`Recognition error: ${error.message}`);
+      } finally {
+        setIsAnalyzing(false);
       }
     };
 
-    // Run recognition every 3 seconds
+    // Run recognition every 3 seconds (less frequent to reduce server load)
     intervalRef.current = setInterval(runRecognition, 3000);
     
-    // Run initial recognition after 2 seconds
+    // Run immediately after 2 seconds
     setTimeout(runRecognition, 2000);
 
     return () => {
@@ -134,7 +155,7 @@ export const useServerSideAWSFaceRecognition = ({
         clearInterval(intervalRef.current);
       }
     };
-  }, [isEnabled, isInitialized, videoElement, eventId, vipPeople]);
+  }, [enabled, isInitialized, videoElement, eventId, vipPeople, isAnalyzing]);
 
   // Cleanup on unmount
   useEffect(() => {
@@ -145,31 +166,71 @@ export const useServerSideAWSFaceRecognition = ({
     };
   }, [eventId, isInitialized]);
 
-  const toggleEnabled = () => {
-    const newEnabled = !isEnabled;
-    setIsEnabled(newEnabled);
+  // Generate personalized announcements based on role and context
+  const generatePersonalizedAnnouncement = (person: VIPPerson, confidence: number): string => {
+    const timeOfDay = new Date().getHours();
+    const isEvening = timeOfDay >= 18;
+    const isMorning = timeOfDay >= 6 && timeOfDay < 12;
     
-    if (!newEnabled) {
-      setStatus('disabled');
-      setIsInitialized(false);
-      initializationRef.current = false;
-      if (intervalRef.current) {
-        clearInterval(intervalRef.current);
-      }
-    } else if (vipPeople.length > 0) {
-      setStatus('initializing');
-      initializationRef.current = false; // Allow re-initialization
-    }
+    const roleBasedAnnouncements = {
+      'CEO': [
+        `Ladies and gentlemen, our CEO ${person.name} has just arrived! Welcome to the party, boss!`,
+        `The big boss is here! Everyone give a warm welcome to ${person.name}!`,
+        `CEO in the house! ${person.name}, great to see you joining us!`,
+        `Our fearless leader ${person.name} has entered the building! Welcome!`
+      ],
+      'Manager': [
+        `Our amazing manager ${person.name} just walked in! Welcome to the celebration!`,
+        `Manager alert! ${person.name} is here to join the fun!`,
+        `Great to see our manager ${person.name} taking time to celebrate with us!`,
+        `${person.name} our fantastic manager has arrived! Welcome!`
+      ],
+      'Intern': [
+        `Our superstar intern ${person.name} is here! Welcome to the party!`,
+        `Intern power! ${person.name} has joined us! Great to see you!`,
+        `Our amazing intern ${person.name} just arrived! Welcome!`,
+        `${person.name} our talented intern is here! Let's give them a warm welcome!`
+      ],
+      'Birthday Person': [
+        `The birthday star has arrived! Everyone, please welcome ${person.name}!`,
+        `It's the birthday legend! ${person.name} is here! Let's celebrate!`,
+        `The guest of honor has entered! Happy birthday ${person.name}!`,
+        `Birthday royalty in the house! ${person.name}, this party is for you!`
+      ],
+      'Guest Speaker': [
+        `Our distinguished guest speaker ${person.name} has arrived! Welcome!`,
+        `Speaker alert! ${person.name} is here! Thank you for joining us!`,
+        `Our keynote speaker ${person.name} just walked in! Great to see you!`,
+        `${person.name} our featured speaker has arrived! Welcome to the event!`
+      ],
+      'VIP Guest': [
+        `VIP alert! ${person.name} has graced us with their presence!`,
+        `Our special guest ${person.name} is here! Welcome!`,
+        `VIP in the house! Everyone welcome ${person.name}!`,
+        `Our honored guest ${person.name} has arrived! Great to see you!`
+      ]
+    };
     
-    console.log(`🎯 Face Recognition: ${newEnabled ? 'Enabled' : 'Disabled'}`);
+    // Get role-specific announcements or use generic VIP
+    const announcements = roleBasedAnnouncements[person.role as keyof typeof roleBasedAnnouncements] || 
+                         roleBasedAnnouncements['VIP Guest'];
+    
+    // Add time-based context
+    const timeContext = isMorning ? ' Good morning!' : 
+                       isEvening ? ' Perfect timing for the evening!' : 
+                       ' Great timing!';
+    
+    const selectedAnnouncement = announcements[Math.floor(Math.random() * announcements.length)];
+    
+    return selectedAnnouncement + timeContext;
   };
-
   return {
-    isEnabled,
-    toggleEnabled,
-    status,
-    recognitionResults,
+    isInitialized,
+    isAnalyzing,
+    recognizedPeople,
+    lastAnalysis,
     error,
-    isInitialized
+    crowdAnalysis,
+    generatePersonalizedAnnouncement
   };
 };
