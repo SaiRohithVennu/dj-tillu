@@ -180,7 +180,7 @@ export const EventSetupWizard: React.FC<EventSetupWizardProps> = ({ onSetupCompl
           {/* Header */}
           <div className="text-center mb-12">
             <h1 className="text-6xl font-bold bg-gradient-to-r from-purple-400 via-pink-400 to-blue-400 bg-clip-text text-transparent mb-4">
-              DJ Tillu
+              iDJ
             </h1>
             <p className="text-xl text-gray-300 mb-8">AI-Powered Event Host & DJ</p>
             
