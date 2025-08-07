@@ -1,155 +1,232 @@
 import React from 'react';
-import { useContinuousAIAgent } from '../hooks/useContinuousAIAgent';
-import { Track } from '../data/tracks';
-import { Bot, Activity, Users, Music, Zap, Clock } from 'lucide-react';
+import { Eye, Brain, MessageSquare, Zap, Clock, Users, Camera, Play, Pause, RotateCcw } from 'lucide-react';
 
 interface ContinuousAIAgentPanelProps {
-  tracks: Track[];
-  currentMood: string;
-  energy: number;
-  crowdSize: number;
+  isActive: boolean;
+  onStartAgent: () => void;
+  onStopAgent: () => void;
+  isAnalyzing: boolean;
+  lastResponse: any;
+  responseHistory: any[];
+  agentStatus: any;
+  error: string | null;
+  onForceAnalysis: () => void;
+  conversationHistory: string[];
+  eventContext: any;
 }
 
 export const ContinuousAIAgentPanel: React.FC<ContinuousAIAgentPanelProps> = ({
-  tracks,
-  currentMood,
-  energy,
-  crowdSize
+  isActive,
+  onStartAgent,
+  onStopAgent,
+  isAnalyzing,
+  lastResponse,
+  responseHistory,
+  agentStatus,
+  error,
+  onForceAnalysis,
+  conversationHistory,
+  eventContext
 }) => {
-  const eventContext = {
-    currentMood,
-    energy,
-    crowdSize,
-    timeOfDay: new Date().getHours(),
-    eventType: 'party',
-    vipGuests: [],
-    specialRequests: []
+  const getEmotionColor = (emotion: string) => {
+    switch (emotion) {
+      case 'excited': return 'text-yellow-400';
+      case 'welcoming': return 'text-green-400';
+      case 'encouraging': return 'text-blue-400';
+      case 'celebratory': return 'text-purple-400';
+      default: return 'text-gray-400';
+    }
   };
 
-  const {
-    isActive,
-    currentAction,
-    insights,
-    recommendations,
-    performance,
-    toggleAgent,
-    executeAction
-  } = useContinuousAIAgent({
-    tracks,
-    eventContext
-  });
+  const getPriorityColor = (priority: string) => {
+    switch (priority) {
+      case 'immediate': return 'text-red-400';
+      case 'high': return 'text-orange-400';
+      case 'medium': return 'text-yellow-400';
+      case 'low': return 'text-green-400';
+      default: return 'text-gray-400';
+    }
+  };
 
   return (
-    <div className="bg-gradient-to-br from-purple-900 via-blue-900 to-indigo-900 rounded-xl p-6 text-white shadow-2xl">
-      <div className="flex items-center justify-between mb-6">
-        <div className="flex items-center space-x-3">
-          <Bot className="w-8 h-8 text-purple-400" />
-          <h2 className="text-2xl font-bold">Continuous AI Agent</h2>
+    <div className="space-y-4">
+      {/* Header */}
+      <div className="flex items-center justify-between">
+        <div className="flex items-center space-x-2">
+          <Eye className="w-5 h-5 text-blue-400" />
+          <span className="text-white font-medium">AI Video Agent</span>
+          {isActive && (
+            <div className={`w-2 h-2 rounded-full animate-pulse ${
+              isAnalyzing ? 'bg-yellow-400' : 'bg-green-400'
+            }`}></div>
+          )}
         </div>
-        <button
-          onClick={toggleAgent}
-          className={`px-4 py-2 rounded-lg font-semibold transition-all ${
-            isActive
-              ? 'bg-green-500 hover:bg-green-600 text-white'
-              : 'bg-gray-600 hover:bg-gray-700 text-gray-200'
-          }`}
-        >
-          {isActive ? 'Active' : 'Inactive'}
-        </button>
+        <div className="flex items-center space-x-2">
+          <button
+            onClick={onForceAnalysis}
+            disabled={!isActive || isAnalyzing}
+            className="p-1 bg-purple-600 hover:bg-purple-700 disabled:bg-gray-600 rounded text-xs transition-colors"
+            title="Force analysis"
+          >
+            <RotateCcw className="w-3 h-3" />
+          </button>
+          <button
+            onClick={isActive ? onStopAgent : onStartAgent}
+            className={`px-3 py-1 rounded text-xs transition-colors ${
+              isActive 
+                ? 'bg-red-600 hover:bg-red-700 text-white' 
+                : 'bg-green-600 hover:bg-green-700 text-white'
+            }`}
+          >
+            {isActive ? (
+              <>
+                <Pause className="w-3 h-3 inline mr-1" />
+                STOP
+              </>
+            ) : (
+              <>
+                <Play className="w-3 h-3 inline mr-1" />
+                START
+              </>
+            )}
+          </button>
+        </div>
       </div>
 
-      {isActive && (
-        <>
-          {/* Current Action */}
-          <div className="mb-6 p-4 bg-black/30 rounded-lg">
-            <div className="flex items-center space-x-2 mb-2">
-              <Activity className="w-5 h-5 text-yellow-400" />
-              <h3 className="text-lg font-semibold">Current Action</h3>
-            </div>
-            <p className="text-gray-300">{currentAction || 'Monitoring event...'}</p>
-          </div>
-
-          {/* Performance Metrics */}
-          <div className="grid grid-cols-2 gap-4 mb-6">
-            <div className="p-3 bg-black/20 rounded-lg">
-              <div className="flex items-center space-x-2 mb-1">
-                <Zap className="w-4 h-4 text-yellow-400" />
-                <span className="text-sm font-medium">Response Time</span>
-              </div>
-              <p className="text-xl font-bold">{performance.responseTime}ms</p>
-            </div>
-            <div className="p-3 bg-black/20 rounded-lg">
-              <div className="flex items-center space-x-2 mb-1">
-                <Clock className="w-4 h-4 text-blue-400" />
-                <span className="text-sm font-medium">Uptime</span>
-              </div>
-              <p className="text-xl font-bold">{Math.floor(performance.uptime / 60)}m</p>
-            </div>
-          </div>
-
-          {/* AI Insights */}
-          <div className="mb-6">
-            <h3 className="text-lg font-semibold mb-3 flex items-center">
-              <Bot className="w-5 h-5 mr-2 text-purple-400" />
-              AI Insights
-            </h3>
-            <div className="space-y-2">
-              {insights.map((insight, index) => (
-                <div key={index} className="p-3 bg-black/20 rounded-lg">
-                  <p className="text-sm text-gray-300">{insight}</p>
-                </div>
-              ))}
-            </div>
-          </div>
-
-          {/* Recommendations */}
-          <div className="mb-6">
-            <h3 className="text-lg font-semibold mb-3 flex items-center">
-              <Music className="w-5 h-5 mr-2 text-green-400" />
-              Recommendations
-            </h3>
-            <div className="space-y-2">
-              {recommendations.map((rec, index) => (
-                <div key={index} className="flex items-center justify-between p-3 bg-black/20 rounded-lg">
-                  <p className="text-sm text-gray-300">{rec.action}</p>
-                  <button
-                    onClick={() => executeAction(rec)}
-                    className="px-3 py-1 bg-purple-600 hover:bg-purple-700 rounded text-xs font-medium transition-colors"
-                  >
-                    Execute
-                  </button>
-                </div>
-              ))}
-            </div>
-          </div>
-
-          {/* Event Context */}
-          <div className="p-4 bg-black/20 rounded-lg">
-            <h3 className="text-lg font-semibold mb-3 flex items-center">
-              <Users className="w-5 h-5 mr-2 text-blue-400" />
-              Event Context
-            </h3>
-            <div className="grid grid-cols-2 gap-4 text-sm">
-              <div>
-                <span className="text-gray-400">Mood:</span>
-                <span className="ml-2 font-medium">{eventContext.currentMood}</span>
-              </div>
-              <div>
-                <span className="text-gray-400">Energy:</span>
-                <span className="ml-2 font-medium">{eventContext.energy}%</span>
-              </div>
-              <div>
-                <span className="text-gray-400">Crowd Size:</span>
-                <span className="ml-2 font-medium">{eventContext.crowdSize}</span>
-              </div>
-              <div>
-                <span className="text-gray-400">Time:</span>
-                <span className="ml-2 font-medium">{eventContext.timeOfDay}:00</span>
-              </div>
-            </div>
-          </div>
-        </>
+      {/* Error Display */}
+      {error && (
+        <div className="bg-red-500/20 border border-red-500/40 rounded-lg p-3">
+          <p className="text-red-300 text-sm">{error}</p>
+        </div>
       )}
+
+      {/* Agent Status */}
+      <div className={`bg-white/10 rounded-lg p-3 border border-white/20 ${!isActive ? 'opacity-50' : ''}`}>
+        <div className="space-y-2 text-sm">
+          <div className="flex justify-between">
+            <span className="text-gray-300">Status:</span>
+            <span className={`font-semibold ${
+              isAnalyzing ? 'text-yellow-300' : 
+              isActive ? 'text-green-300' : 'text-red-300'
+            }`}>
+              {isAnalyzing ? 'Analyzing...' :
+               isActive ? 'Watching' : 'Inactive'}
+            </span>
+          </div>
+          
+          <div className="flex justify-between">
+            <span className="text-gray-300">Event:</span>
+            <span className="text-purple-300 font-semibold">
+              {eventContext?.eventName || 'None'}
+            </span>
+          </div>
+          
+          <div className="flex justify-between">
+            <span className="text-gray-300">Personality:</span>
+            <span className="text-blue-300 capitalize">
+              {eventContext?.aiPersonality || 'None'}
+            </span>
+          </div>
+
+          {agentStatus.conversationHistory !== undefined && (
+            <div className="flex justify-between">
+              <span className="text-gray-300">Interactions:</span>
+              <span className="text-green-300 font-semibold">
+                {agentStatus.conversationHistory}
+              </span>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Last Response */}
+      {lastResponse && (
+        <div className="bg-blue-600/10 rounded-lg p-3 border border-blue-500/20">
+          <h4 className="text-sm font-medium text-blue-300 mb-2 flex items-center">
+            <Brain className="w-4 h-4 mr-1" />
+            Last AI Response
+          </h4>
+          <div className="space-y-2 text-xs">
+            <div className="flex justify-between">
+              <span className="text-gray-300">Priority:</span>
+              <span className={`font-semibold ${getPriorityColor(lastResponse.priority)}`}>
+                {lastResponse.priority.toUpperCase()}
+              </span>
+            </div>
+            
+            <div className="flex justify-between">
+              <span className="text-gray-300">Emotion:</span>
+              <span className={`font-semibold ${getEmotionColor(lastResponse.emotion)}`}>
+                {lastResponse.emotion}
+              </span>
+            </div>
+            
+            {lastResponse.message && (
+              <div>
+                <span className="text-gray-300">Message:</span>
+                <p className="text-white text-sm mt-1 italic">"{lastResponse.message}"</p>
+              </div>
+            )}
+            
+            {lastResponse.suggestedMusicStyle && (
+              <div className="flex justify-between">
+                <span className="text-gray-300">Music:</span>
+                <span className="text-purple-300">{lastResponse.suggestedMusicStyle}</span>
+              </div>
+            )}
+            
+            <div>
+              <span className="text-gray-300">Reasoning:</span>
+              <p className="text-gray-400 text-xs mt-1">{lastResponse.reasoning}</p>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Conversation History */}
+      {conversationHistory.length > 0 && (
+        <div>
+          <h4 className="text-sm font-medium text-gray-300 mb-2 flex items-center">
+            <MessageSquare className="w-4 h-4 mr-1" />
+            Recent Interactions
+          </h4>
+          <div className="space-y-1 max-h-32 overflow-y-auto">
+            {conversationHistory.slice(-5).reverse().map((interaction, index) => (
+              <div
+                key={index}
+                className="p-2 bg-white/5 rounded text-xs"
+              >
+                <p className="text-gray-300">"{interaction.split(': ')[1]}"</p>
+                <p className="text-gray-500 text-xs mt-1">{interaction.split(': ')[0]}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Analysis Indicator */}
+      {isAnalyzing && (
+        <div className="bg-yellow-600/20 rounded-lg p-3 border border-yellow-500/30">
+          <div className="flex items-center space-x-2">
+            <div className="w-4 h-4 border-2 border-yellow-400 border-t-transparent rounded-full animate-spin"></div>
+            <span className="text-yellow-300 text-sm">AI is watching and thinking...</span>
+          </div>
+          <p className="text-xs text-yellow-200 mt-1">
+            Analyzing video feed with Gemini Vision + OpenAI reasoning
+          </p>
+        </div>
+      )}
+
+      {/* Info */}
+      <div className={`bg-blue-600/10 rounded-lg p-2 border border-blue-500/20 ${!isActive ? 'opacity-50' : ''}`}>
+        <p className="text-xs text-gray-300 text-center">
+          <strong>Continuous AI Video Agent</strong><br />
+          {isActive 
+            ? 'Watching video feed and making intelligent hosting decisions every 3-5 seconds'
+            : 'Click START to enable continuous AI video interaction'
+          }
+        </p>
+      </div>
     </div>
   );
 };

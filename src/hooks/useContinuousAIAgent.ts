@@ -1,327 +1,221 @@
 import { useState, useEffect, useRef } from 'react';
+import { ContinuousAIVideoAgent } from '../utils/continuousAIAgent';
+import { Track } from '../data/tracks';
 
-export interface EventContext {
-  currentMood: string;
-  energy: number;
-  crowdSize: number;
-  timeOfDay: string;
-  eventType: string;
-  vipGuests: string[];
-  specialRequests: string[];
-}
-
-export interface AIInsight {
+interface VIPPerson {
   id: string;
-  type: 'music' | 'crowd' | 'energy' | 'timing' | 'special';
-  message: string;
-  confidence: number;
-  timestamp: Date;
-  actionable: boolean;
+  name: string;
+  role: string;
+  imageFile?: File;
+  imageUrl?: string;
+  greeting?: string;
+  recognitionCount: number;
+  lastSeen?: Date;
 }
 
-export interface AIRecommendation {
-  id: string;
-  type: 'track' | 'transition' | 'announcement' | 'lighting' | 'volume';
-  title: string;
-  description: string;
-  priority: 'low' | 'medium' | 'high' | 'urgent';
-  estimatedImpact: number;
-  timestamp: Date;
+interface EventContext {
+  eventName: string;
+  eventType: 'birthday' | 'corporate' | 'wedding' | 'party' | 'conference';
+  duration: number;
+  aiPersonality: 'humorous' | 'formal' | 'energetic' | 'professional';
+  vipPeople: VIPPerson[];
+  startTime: Date;
 }
 
-export interface PerformanceMetrics {
-  crowdEngagement: number;
-  energyLevel: number;
-  musicSatisfaction: number;
-  transitionQuality: number;
-  overallScore: number;
-  trendsLast30Min: {
-    engagement: number[];
-    energy: number[];
-    satisfaction: number[];
-  };
+interface UseContinuousAIAgentProps {
+  videoElement: HTMLVideoElement | null;
+  eventContext: EventContext;
+  tracks: Track[];
+  currentTrack: Track | null;
+  isPlaying: boolean;
+  onAnnouncement: (message: string) => void;
+  onTrackChange: (track: Track) => void;
+  enabled: boolean;
 }
 
-export interface ContinuousAIAgentState {
-  isActive: boolean;
-  insights: AIInsight[];
-  recommendations: AIRecommendation[];
-  performanceMetrics: PerformanceMetrics;
-  lastAnalysis: Date | null;
-  analysisCount: number;
-  status: 'idle' | 'analyzing' | 'generating' | 'error';
-  error: string | null;
-}
+export const useContinuousAIAgent = ({
+  videoElement,
+  eventContext,
+  tracks,
+  currentTrack,
+  isPlaying,
+  onAnnouncement,
+  onTrackChange,
+  enabled
+}: UseContinuousAIAgentProps) => {
+  const [isActive, setIsActive] = useState(false);
+  const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const [lastResponse, setLastResponse] = useState<any>(null);
+  const [responseHistory, setResponseHistory] = useState<any[]>([]);
+  const [agentStatus, setAgentStatus] = useState<any>({});
+  const [error, setError] = useState<string | null>(null);
 
-export interface UseContinuousAIAgentReturn extends ContinuousAIAgentState {
-  startAgent: () => void;
-  stopAgent: () => void;
-  clearInsights: () => void;
-  clearRecommendations: () => void;
-  dismissRecommendation: (id: string) => void;
-  forceAnalysis: () => void;
-}
+  const agentRef = useRef<ContinuousAIVideoAgent | null>(null);
+  const intervalRef = useRef<NodeJS.Timeout>();
 
-export function useContinuousAIAgent(eventContext: EventContext): UseContinuousAIAgentReturn {
-  const [state, setState] = useState<ContinuousAIAgentState>({
-    isActive: false,
-    insights: [],
-    recommendations: [],
-    performanceMetrics: {
-      crowdEngagement: 0,
-      energyLevel: 0,
-      musicSatisfaction: 0,
-      transitionQuality: 0,
-      overallScore: 0,
-      trendsLast30Min: {
-        engagement: [],
-        energy: [],
-        satisfaction: []
-      }
-    },
-    lastAnalysis: null,
-    analysisCount: 0,
-    status: 'idle',
-    error: null
-  });
+  // Initialize the AI agent
+  useEffect(() => {
+    const openAIKey = import.meta.env.VITE_OPENAI_API_KEY;
+    const geminiKey = import.meta.env.VITE_GEMINI_API_KEY;
 
-  const intervalRef = useRef<NodeJS.Timeout | null>(null);
-  const analysisIntervalMs = 30000; // 30 seconds
-
-  const generateInsights = async (): Promise<AIInsight[]> => {
-    // Simulate AI analysis based on event context
-    const insights: AIInsight[] = [];
-    
-    // Energy-based insights
-    if (eventContext.energy < 0.3) {
-      insights.push({
-        id: `insight-${Date.now()}-1`,
-        type: 'energy',
-        message: 'Crowd energy is low. Consider playing more upbeat tracks or making an announcement.',
-        confidence: 0.85,
-        timestamp: new Date(),
-        actionable: true
-      });
-    } else if (eventContext.energy > 0.8) {
-      insights.push({
-        id: `insight-${Date.now()}-2`,
-        type: 'energy',
-        message: 'High energy detected! This is a great time for peak-hour tracks.',
-        confidence: 0.92,
-        timestamp: new Date(),
-        actionable: true
-      });
+    if (!openAIKey || !geminiKey) {
+      setError('Missing API keys. Please add VITE_OPENAI_API_KEY and VITE_GEMINI_API_KEY to your .env file');
+      return;
     }
 
-    // Mood-based insights
-    if (eventContext.currentMood === 'chill' && eventContext.energy > 0.6) {
-      insights.push({
-        id: `insight-${Date.now()}-3`,
-        type: 'music',
-        message: 'Mood-energy mismatch detected. Consider transitioning to more energetic genres.',
-        confidence: 0.78,
-        timestamp: new Date(),
-        actionable: true
-      });
-    }
+    agentRef.current = new ContinuousAIVideoAgent(openAIKey, geminiKey);
+    console.log('🤖 Continuous AI Agent initialized');
+  }, []);
 
-    // Time-based insights
-    const hour = new Date().getHours();
-    if (hour > 22 && eventContext.energy < 0.5) {
-      insights.push({
-        id: `insight-${Date.now()}-4`,
-        type: 'timing',
-        message: 'Late hour with low energy. Consider playing nostalgic or crowd-favorite tracks.',
-        confidence: 0.73,
-        timestamp: new Date(),
-        actionable: true
-      });
-    }
-
-    // VIP insights
-    if (eventContext.vipGuests.length > 0) {
-      insights.push({
-        id: `insight-${Date.now()}-5`,
-        type: 'special',
-        message: `${eventContext.vipGuests.length} VIP guest(s) detected. Consider personalized music preferences.`,
-        confidence: 0.95,
-        timestamp: new Date(),
-        actionable: true
-      });
-    }
-
-    return insights;
-  };
-
-  const generateRecommendations = async (): Promise<AIRecommendation[]> => {
-    const recommendations: AIRecommendation[] = [];
-    
-    // Track recommendations based on context
-    if (eventContext.energy < 0.4) {
-      recommendations.push({
-        id: `rec-${Date.now()}-1`,
-        type: 'track',
-        title: 'Play High-Energy Track',
-        description: 'Switch to a high-BPM track to boost crowd energy',
-        priority: 'high',
-        estimatedImpact: 0.8,
-        timestamp: new Date()
-      });
-    }
-
-    // Transition recommendations
-    if (eventContext.currentMood === 'party' && eventContext.energy > 0.7) {
-      recommendations.push({
-        id: `rec-${Date.now()}-2`,
-        type: 'transition',
-        title: 'Smooth Transition',
-        description: 'Use a smooth transition to maintain the high energy flow',
-        priority: 'medium',
-        estimatedImpact: 0.6,
-        timestamp: new Date()
-      });
-    }
-
-    // Announcement recommendations
-    if (eventContext.crowdSize > 100 && eventContext.energy < 0.3) {
-      recommendations.push({
-        id: `rec-${Date.now()}-3`,
-        type: 'announcement',
-        title: 'Crowd Engagement',
-        description: 'Make an announcement to re-engage the crowd',
-        priority: 'high',
-        estimatedImpact: 0.7,
-        timestamp: new Date()
-      });
-    }
-
-    // Volume recommendations
-    const hour = new Date().getHours();
-    if (hour > 23) {
-      recommendations.push({
-        id: `rec-${Date.now()}-4`,
-        type: 'volume',
-        title: 'Adjust Volume',
-        description: 'Consider lowering volume for late-night comfort',
-        priority: 'low',
-        estimatedImpact: 0.4,
-        timestamp: new Date()
-      });
-    }
-
-    return recommendations;
-  };
-
-  const updatePerformanceMetrics = (): PerformanceMetrics => {
-    // Simulate performance metrics calculation
-    const crowdEngagement = Math.max(0, Math.min(1, eventContext.energy * 0.8 + Math.random() * 0.2));
-    const energyLevel = eventContext.energy;
-    const musicSatisfaction = eventContext.currentMood === 'party' ? 0.9 : 0.7;
-    const transitionQuality = 0.8 + Math.random() * 0.2;
-    const overallScore = (crowdEngagement + energyLevel + musicSatisfaction + transitionQuality) / 4;
-
-    return {
-      crowdEngagement,
-      energyLevel,
-      musicSatisfaction,
-      transitionQuality,
-      overallScore,
-      trendsLast30Min: {
-        engagement: [...state.performanceMetrics.trendsLast30Min.engagement.slice(-29), crowdEngagement],
-        energy: [...state.performanceMetrics.trendsLast30Min.energy.slice(-29), energyLevel],
-        satisfaction: [...state.performanceMetrics.trendsLast30Min.satisfaction.slice(-29), musicSatisfaction]
-      }
-    };
-  };
-
-  const performAnalysis = async () => {
-    setState(prev => ({ ...prev, status: 'analyzing' }));
-
-    try {
-      setState(prev => ({ ...prev, status: 'generating' }));
-      
-      const [newInsights, newRecommendations] = await Promise.all([
-        generateInsights(),
-        generateRecommendations()
-      ]);
-
-      const updatedMetrics = updatePerformanceMetrics();
-
-      setState(prev => ({
-        ...prev,
-        insights: [...prev.insights.slice(-19), ...newInsights], // Keep last 20 insights
-        recommendations: [...prev.recommendations.slice(-9), ...newRecommendations], // Keep last 10 recommendations
-        performanceMetrics: updatedMetrics,
-        lastAnalysis: new Date(),
-        analysisCount: prev.analysisCount + 1,
-        status: 'idle',
-        error: null
-      }));
-    } catch (error) {
-      setState(prev => ({
-        ...prev,
-        status: 'error',
-        error: error instanceof Error ? error.message : 'Analysis failed'
-      }));
-    }
-  };
-
+  // Start the agent
   const startAgent = () => {
-    setState(prev => ({ ...prev, isActive: true, error: null }));
+    if (!agentRef.current || !videoElement) {
+      setError('Agent not ready or video not available');
+      return;
+    }
+
+    agentRef.current.start(eventContext);
+    setIsActive(true);
+    setError(null);
     
-    // Perform initial analysis
-    performAnalysis();
+    console.log('🎥 Starting continuous AI video agent...');
     
-    // Set up continuous analysis
-    intervalRef.current = setInterval(performAnalysis, analysisIntervalMs);
+    // Welcome message
+    const welcomeMessage = `Hello everyone! I'm your AI host for ${eventContext.eventName}. I can see you through the camera and I'm here to make this ${eventContext.eventType} amazing!`;
+    setTimeout(() => {
+      onAnnouncement(welcomeMessage);
+    }, 2000);
   };
 
+  // Stop the agent
   const stopAgent = () => {
-    setState(prev => ({ ...prev, isActive: false }));
-    
+    if (agentRef.current) {
+      agentRef.current.stop();
+    }
+    setIsActive(false);
     if (intervalRef.current) {
       clearInterval(intervalRef.current);
-      intervalRef.current = null;
     }
+    console.log('🤖 Continuous AI Agent stopped');
   };
 
-  const clearInsights = () => {
-    setState(prev => ({ ...prev, insights: [] }));
-  };
-
-  const clearRecommendations = () => {
-    setState(prev => ({ ...prev, recommendations: [] }));
-  };
-
-  const dismissRecommendation = (id: string) => {
-    setState(prev => ({
-      ...prev,
-      recommendations: prev.recommendations.filter(rec => rec.id !== id)
-    }));
-  };
-
-  const forceAnalysis = () => {
-    if (state.isActive) {
-      performAnalysis();
-    }
-  };
-
-  // Cleanup on unmount
+  // Main analysis loop
   useEffect(() => {
+    if (!isActive || !enabled || !videoElement || !agentRef.current) {
+      return;
+    }
+
+    const runContinuousAnalysis = async () => {
+      if (isAnalyzing) return;
+
+      setIsAnalyzing(true);
+      setError(null);
+
+      try {
+        const response = await agentRef.current!.analyzeVideoAndRespond(videoElement);
+        
+        if (response) {
+          setLastResponse(response);
+          setResponseHistory(prev => [...prev.slice(-9), response]);
+
+          // Execute AI decisions
+          if (response.shouldSpeak && response.message) {
+            console.log('🎤 AI Agent speaking:', response.message);
+            setTimeout(() => {
+              onAnnouncement(response.message!);
+            }, 500);
+          }
+
+          if (response.shouldChangeMusic && response.suggestedMusicStyle && tracks.length > 0) {
+            const suggestedTrack = findTrackByStyle(response.suggestedMusicStyle);
+            if (suggestedTrack && suggestedTrack.id !== currentTrack?.id) {
+              console.log('🎵 AI Agent changing music:', suggestedTrack.title);
+              setTimeout(() => {
+                onTrackChange(suggestedTrack);
+              }, 3000);
+            }
+          }
+
+          // Update status
+          setAgentStatus(agentRef.current!.getStatus());
+        }
+
+      } catch (error: any) {
+        console.error('🤖 Continuous AI analysis error:', error);
+        setError(error.message);
+      } finally {
+        setIsAnalyzing(false);
+      }
+    };
+
+    // Run analysis every 3-5 seconds (like ChatGPT video)
+    const randomInterval = 3000 + Math.random() * 2000;
+    intervalRef.current = setInterval(runContinuousAnalysis, randomInterval);
+
+    // Run initial analysis after 3 seconds
+    setTimeout(runContinuousAnalysis, 3000);
+
     return () => {
       if (intervalRef.current) {
         clearInterval(intervalRef.current);
       }
     };
-  }, []);
+  }, [isActive, enabled, videoElement, eventContext, tracks, currentTrack, isAnalyzing]);
+
+  // Find track by AI suggestion
+  const findTrackByStyle = (style: string): Track | null => {
+    const styleLower = style.toLowerCase();
+    
+    // Try to match by genre
+    let matchedTrack = tracks.find(track => 
+      track.genre.toLowerCase().includes(styleLower)
+    );
+
+    // Try to match by energy level
+    if (!matchedTrack) {
+      if (styleLower.includes('high energy') || styleLower.includes('upbeat')) {
+        matchedTrack = tracks.find(track => track.bpm > 130);
+      } else if (styleLower.includes('chill') || styleLower.includes('slow')) {
+        matchedTrack = tracks.find(track => track.bpm < 120);
+      }
+    }
+
+    // Random fallback
+    if (!matchedTrack && tracks.length > 0) {
+      matchedTrack = tracks[Math.floor(Math.random() * tracks.length)];
+    }
+
+    return matchedTrack || null;
+  };
+
+  // Force analysis (for testing)
+  const forceAnalysis = async () => {
+    if (!agentRef.current || !videoElement || isAnalyzing) return;
+
+    setIsAnalyzing(true);
+    try {
+      const response = await agentRef.current.forceAnalysis(videoElement);
+      if (response) {
+        setLastResponse(response);
+        console.log('🔍 Forced analysis result:', response);
+      }
+    } catch (error: any) {
+      setError(error.message);
+    } finally {
+      setIsAnalyzing(false);
+    }
+  };
 
   return {
-    ...state,
+    isActive,
     startAgent,
     stopAgent,
-    clearInsights,
-    clearRecommendations,
-    dismissRecommendation,
-    forceAnalysis
+    isAnalyzing,
+    lastResponse,
+    responseHistory,
+    agentStatus,
+    error,
+    forceAnalysis,
+    conversationHistory: agentRef.current?.getConversationSummary() || []
   };
-}
+};

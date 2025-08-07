@@ -1,320 +1,233 @@
-import React, { useState } from 'react';
-import { Calendar, Users, Music, TrendingUp, Clock, MapPin, Mic, Settings, BarChart3, Activity } from 'lucide-react';
-
-interface EventDetails {
-  name: string;
-  type: string;
-  venue: string;
-  date: string;
-  duration: number;
-  expectedAttendance: number;
-  vibe: string;
-  specialRequests: string;
-}
+import React from 'react';
+import { Calendar, Clock, Users, Zap, CheckCircle, AlertCircle } from 'lucide-react';
 
 interface SmartEventDashboardProps {
-  eventDetails: EventDetails;
-  currentTrack?: any;
-  currentMood?: string;
-  energy?: number;
-  crowdSize?: number;
-  isPlaying?: boolean;
-  announcements?: string[];
-  onUpdateEventDetails?: (details: Partial<EventDetails>) => void;
-  onTrackChange?: (track: any) => void;
-  onAnnouncement?: (announcement: string) => void;
+  eventDetails: any;
+  isActive: boolean;
+  eventStarted: boolean;
+  currentPhase: any;
+  recognizedVIPs: any[];
+  eventStatus: string;
+  upcomingMoments: any[];
+  triggeredMoments: string[];
+  onStartEvent: () => void;
+  onStopEvent: () => void;
 }
 
 export const SmartEventDashboard: React.FC<SmartEventDashboardProps> = ({
   eventDetails,
-  currentTrack,
-  currentMood = 'neutral',
-  energy = 0.5,
-  crowdSize = 0,
-  isPlaying = false,
-  announcements = [],
-  onUpdateEventDetails,
-  onTrackChange,
-  onAnnouncement
+  isActive,
+  eventStarted,
+  currentPhase,
+  recognizedVIPs,
+  eventStatus,
+  upcomingMoments,
+  triggeredMoments,
+  onStartEvent,
+  onStopEvent
 }) => {
-  const [activeTab, setActiveTab] = useState('overview');
+  if (!eventDetails) {
+    return (
+      <div className="text-center py-8">
+        <Calendar className="w-12 h-12 text-gray-500 mx-auto mb-3" />
+        <p className="text-gray-300 mb-2">No event configured</p>
+        <p className="text-gray-400 text-sm">Set up your event in the Event Setup panel</p>
+      </div>
+    );
+  }
 
-  const getEnergyColor = (energy: number) => {
-    if (energy > 0.7) return 'text-red-600 bg-red-100';
-    if (energy > 0.4) return 'text-yellow-600 bg-yellow-100';
-    return 'text-green-600 bg-green-100';
+  const formatTime = (time: string) => {
+    return new Date(`2000-01-01T${time}`).toLocaleTimeString([], { 
+      hour: '2-digit', 
+      minute: '2-digit' 
+    });
   };
 
-  const getMoodColor = (mood: string) => {
-    switch (mood.toLowerCase()) {
-      case 'energetic': return 'text-red-600 bg-red-100';
-      case 'happy': return 'text-yellow-600 bg-yellow-100';
-      case 'chill': return 'text-blue-600 bg-blue-100';
-      case 'romantic': return 'text-pink-600 bg-pink-100';
-      default: return 'text-gray-600 bg-gray-100';
-    }
-  };
-
-  const formatDuration = (minutes: number) => {
-    const hours = Math.floor(minutes / 60);
-    const mins = minutes % 60;
-    return hours > 0 ? `${hours}h ${mins}m` : `${mins}m`;
+  const getPhaseColor = (phase: string) => {
+    const colors = {
+      arrival: 'blue',
+      cocktail: 'green',
+      dinner: 'yellow',
+      dancing: 'purple',
+      closing: 'red'
+    };
+    return colors[phase as keyof typeof colors] || 'gray';
   };
 
   return (
-    <div className="bg-white rounded-lg shadow-lg p-6 max-w-6xl mx-auto">
-      {/* Header */}
-      <div className="flex items-center justify-between mb-6">
-        <div className="flex items-center space-x-3">
-          <Calendar className="w-8 h-8 text-blue-600" />
-          <div>
-            <h2 className="text-2xl font-bold text-gray-800">Smart Event Dashboard</h2>
-            <p className="text-gray-600">{eventDetails.name}</p>
-          </div>
+    <div className="space-y-4">
+      {/* Event Header */}
+      <div className="bg-gradient-to-r from-purple-600/20 to-pink-600/20 rounded-lg p-4 border border-purple-500/30">
+        <div className="flex items-center justify-between mb-2">
+          <h3 className="text-lg font-bold text-white">{eventDetails.name}</h3>
+          <span className="px-2 py-1 bg-purple-500/30 text-purple-200 rounded text-xs">
+            {eventDetails.type.toUpperCase()}
+          </span>
         </div>
-        
-        <div className="flex items-center space-x-4">
-          <div className={`flex items-center space-x-2 px-3 py-1 rounded-full ${
-            isPlaying ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-600'
-          }`}>
-            <div className={`w-2 h-2 rounded-full ${
-              isPlaying ? 'bg-green-500 animate-pulse' : 'bg-gray-400'
-            }`} />
-            <span className="text-sm font-medium">
-              {isPlaying ? 'Live' : 'Paused'}
+        <div className="grid grid-cols-2 gap-4 text-sm">
+          <div className="flex items-center space-x-2">
+            <Clock className="w-4 h-4 text-gray-400" />
+            <span className="text-gray-300">
+              {formatTime(eventDetails.startTime)} - {formatTime(eventDetails.endTime)}
             </span>
           </div>
+          <div className="flex items-center space-x-2">
+            <Users className="w-4 h-4 text-gray-400" />
+            <span className="text-gray-300">{eventDetails.expectedAttendees} guests</span>
+          </div>
         </div>
       </div>
 
-      {/* Tab Navigation */}
-      <div className="flex space-x-1 mb-6 bg-gray-100 rounded-lg p-1">
-        {[
-          { id: 'overview', label: 'Overview', icon: BarChart3 },
-          { id: 'crowd', label: 'Crowd Analysis', icon: Users },
-          { id: 'music', label: 'Music Control', icon: Music },
-          { id: 'announcements', label: 'Announcements', icon: Mic }
-        ].map((tab) => {
-          const Icon = tab.icon;
-          return (
+      {/* Event Status */}
+      <div className="bg-white/10 rounded-lg p-3 border border-white/20">
+        <div className="flex items-center justify-between mb-3">
+          <span className="text-gray-300">Event Status:</span>
+          <span className={`font-semibold ${
+            eventStarted && isActive ? 'text-green-300' : 
+            eventStarted ? 'text-yellow-300' : 'text-gray-300'
+          }`}>
+            {eventStatus}
+          </span>
+        </div>
+        
+        <div className="flex space-x-2">
+          {!eventStarted ? (
             <button
-              key={tab.id}
-              onClick={() => setActiveTab(tab.id)}
-              className={`flex items-center space-x-2 px-4 py-2 rounded-md font-medium transition-colors ${
-                activeTab === tab.id
-                  ? 'bg-white text-blue-600 shadow-sm'
-                  : 'text-gray-600 hover:text-gray-800'
+              onClick={onStartEvent}
+              className="flex-1 px-3 py-2 bg-green-600 hover:bg-green-700 rounded-lg transition-colors flex items-center justify-center"
+            >
+              <Zap className="w-4 h-4 mr-2" />
+              Start Event
+            </button>
+          ) : (
+            <button
+              onClick={onStopEvent}
+              className="flex-1 px-3 py-2 bg-red-600 hover:bg-red-700 rounded-lg transition-colors"
+            >
+              Stop Event
+            </button>
+          )}
+        </div>
+      </div>
+
+      {/* Current Phase */}
+      {currentPhase && (
+        <div className={`bg-${getPhaseColor(currentPhase.phase)}-600/20 rounded-lg p-3 border border-${getPhaseColor(currentPhase.phase)}-500/30`}>
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-white font-medium">Current Phase</span>
+            <span className={`text-${getPhaseColor(currentPhase.phase)}-300 text-sm`}>
+              {formatTime(currentPhase.time)}
+            </span>
+          </div>
+          <div className="space-y-1 text-sm">
+            <div className="flex justify-between">
+              <span className="text-gray-300">Phase:</span>
+              <span className={`text-${getPhaseColor(currentPhase.phase)}-200 capitalize`}>
+                {currentPhase.phase}
+              </span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-gray-300">Music Style:</span>
+              <span className={`text-${getPhaseColor(currentPhase.phase)}-200`}>
+                {currentPhase.musicStyle}
+              </span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-gray-300">Target Energy:</span>
+              <span className={`text-${getPhaseColor(currentPhase.phase)}-200`}>
+                {currentPhase.energyTarget}/10
+              </span>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* VIP Recognition Status */}
+      <div>
+        <h4 className="text-sm font-medium text-gray-300 mb-2">VIP Recognition</h4>
+        <div className="space-y-2 max-h-32 overflow-y-auto">
+          {recognizedVIPs.map((vip) => (
+            <div
+              key={vip.id}
+              className={`p-2 rounded-lg border text-sm ${
+                vip.recognitionCount > 0
+                  ? 'bg-green-500/20 border-green-500/40'
+                  : 'bg-white/5 border-white/20'
               }`}
             >
-              <Icon className="w-4 h-4" />
-              <span>{tab.label}</span>
-            </button>
-          );
-        })}
+              <div className="flex items-center justify-between">
+                <div>
+                  <span className="text-white font-medium">{vip.name}</span>
+                  <span className="text-gray-400 ml-2">({vip.role})</span>
+                </div>
+                <div className="flex items-center space-x-1">
+                  {vip.recognitionCount > 0 ? (
+                    <>
+                      <CheckCircle className="w-4 h-4 text-green-400" />
+                      <span className="text-green-300 text-xs">
+                        {vip.recognitionCount}x
+                      </span>
+                    </>
+                  ) : (
+                    <span className="text-gray-500 text-xs">Not seen</span>
+                  )}
+                </div>
+              </div>
+            </div>
+          ))}
+          
+          {recognizedVIPs.length === 0 && (
+            <p className="text-xs text-gray-400 text-center py-2">No VIPs configured</p>
+          )}
+        </div>
       </div>
 
-      {/* Tab Content */}
-      {activeTab === 'overview' && (
-        <div className="space-y-6">
-          {/* Event Info Cards */}
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-            <div className="bg-gradient-to-r from-blue-50 to-blue-100 rounded-lg p-4">
-              <div className="flex items-center space-x-2 mb-2">
-                <MapPin className="w-5 h-5 text-blue-600" />
-                <span className="font-medium text-blue-800">Venue</span>
+      {/* Upcoming Moments */}
+      <div>
+        <h4 className="text-sm font-medium text-gray-300 mb-2">Upcoming Moments</h4>
+        <div className="space-y-2">
+          {upcomingMoments.map((moment) => (
+            <div
+              key={moment.id}
+              className="p-2 bg-yellow-600/20 border border-yellow-500/30 rounded-lg text-sm"
+            >
+              <div className="flex items-center justify-between">
+                <span className="text-white">{moment.description}</span>
+                <span className="text-yellow-300">{formatTime(moment.time)}</span>
               </div>
-              <p className="text-lg font-bold text-blue-900">{eventDetails.venue}</p>
-            </div>
-            
-            <div className="bg-gradient-to-r from-green-50 to-green-100 rounded-lg p-4">
-              <div className="flex items-center space-x-2 mb-2">
-                <Users className="w-5 h-5 text-green-600" />
-                <span className="font-medium text-green-800">Attendance</span>
+              <div className="text-xs text-yellow-200 mt-1 capitalize">
+                {moment.type.replace('_', ' ')}
               </div>
-              <p className="text-lg font-bold text-green-900">
-                {crowdSize} / {eventDetails.expectedAttendance}
-              </p>
             </div>
-            
-            <div className="bg-gradient-to-r from-purple-50 to-purple-100 rounded-lg p-4">
-              <div className="flex items-center space-x-2 mb-2">
-                <Clock className="w-5 h-5 text-purple-600" />
-                <span className="font-medium text-purple-800">Duration</span>
-              </div>
-              <p className="text-lg font-bold text-purple-900">
-                {formatDuration(eventDetails.duration)}
-              </p>
-            </div>
-            
-            <div className="bg-gradient-to-r from-orange-50 to-orange-100 rounded-lg p-4">
-              <div className="flex items-center space-x-2 mb-2">
-                <TrendingUp className="w-5 h-5 text-orange-600" />
-                <span className="font-medium text-orange-800">Event Type</span>
-              </div>
-              <p className="text-lg font-bold text-orange-900 capitalize">
-                {eventDetails.type}
-              </p>
-            </div>
-          </div>
+          ))}
+          
+          {upcomingMoments.length === 0 && (
+            <p className="text-xs text-gray-400 text-center py-2">No upcoming moments</p>
+          )}
+        </div>
+      </div>
 
-          {/* Real-time Metrics */}
-          <div className="bg-gray-50 rounded-lg p-6">
-            <h3 className="text-lg font-semibold text-gray-800 mb-4">Real-time Metrics</h3>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <div className="bg-white rounded-lg p-4">
-                <div className="flex items-center justify-between mb-2">
-                  <span className="text-sm font-medium text-gray-700">Current Mood</span>
-                  <Activity className="w-4 h-4 text-gray-500" />
-                </div>
-                <div className={`inline-flex items-center px-3 py-1 rounded-full text-sm font-medium ${getMoodColor(currentMood)}`}>
-                  {currentMood.charAt(0).toUpperCase() + currentMood.slice(1)}
-                </div>
-              </div>
-              
-              <div className="bg-white rounded-lg p-4">
-                <div className="flex items-center justify-between mb-2">
-                  <span className="text-sm font-medium text-gray-700">Energy Level</span>
-                  <BarChart3 className="w-4 h-4 text-gray-500" />
-                </div>
-                <div className="flex items-center space-x-2">
-                  <div className="flex-1 bg-gray-200 rounded-full h-2">
-                    <div 
-                      className="bg-gradient-to-r from-green-400 to-red-500 h-2 rounded-full transition-all duration-300"
-                      style={{ width: `${energy * 100}%` }}
-                    />
-                  </div>
-                  <span className={`text-sm font-medium px-2 py-1 rounded ${getEnergyColor(energy)}`}>
-                    {Math.round(energy * 100)}%
-                  </span>
-                </div>
-              </div>
-              
-              <div className="bg-white rounded-lg p-4">
-                <div className="flex items-center justify-between mb-2">
-                  <span className="text-sm font-medium text-gray-700">Now Playing</span>
-                  <Music className="w-4 h-4 text-gray-500" />
-                </div>
-                <p className="text-sm font-medium text-gray-900 truncate">
-                  {currentTrack ? `${currentTrack.title} - ${currentTrack.artist}` : 'No track selected'}
-                </p>
-              </div>
-            </div>
+      {/* Event Stats */}
+      <div className="bg-purple-600/10 rounded-lg p-3 border border-purple-500/20">
+        <div className="grid grid-cols-3 gap-4 text-center text-xs">
+          <div>
+            <p className="text-purple-300 font-semibold">{triggeredMoments.length}</p>
+            <p className="text-gray-400">Moments</p>
+          </div>
+          <div>
+            <p className="text-purple-300 font-semibold">
+              {recognizedVIPs.filter(v => v.recognitionCount > 0).length}
+            </p>
+            <p className="text-gray-400">VIPs Seen</p>
+          </div>
+          <div>
+            <p className="text-purple-300 font-semibold">
+              {eventDetails.eventFlow.length}
+            </p>
+            <p className="text-gray-400">Phases</p>
           </div>
         </div>
-      )}
-
-      {activeTab === 'crowd' && (
-        <div className="space-y-6">
-          <div className="bg-gradient-to-r from-blue-50 to-purple-50 rounded-lg p-6">
-            <h3 className="text-lg font-semibold text-gray-800 mb-4">Crowd Analysis</h3>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              <div>
-                <h4 className="font-medium text-gray-700 mb-3">Attendance Tracking</h4>
-                <div className="space-y-3">
-                  <div className="flex justify-between items-center">
-                    <span className="text-sm text-gray-600">Current Attendance</span>
-                    <span className="font-bold text-blue-600">{crowdSize}</span>
-                  </div>
-                  <div className="flex justify-between items-center">
-                    <span className="text-sm text-gray-600">Expected</span>
-                    <span className="font-bold text-gray-800">{eventDetails.expectedAttendance}</span>
-                  </div>
-                  <div className="flex justify-between items-center">
-                    <span className="text-sm text-gray-600">Capacity %</span>
-                    <span className="font-bold text-green-600">
-                      {Math.round((crowdSize / eventDetails.expectedAttendance) * 100)}%
-                    </span>
-                  </div>
-                </div>
-              </div>
-              <div>
-                <h4 className="font-medium text-gray-700 mb-3">Mood Distribution</h4>
-                <div className="space-y-2">
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm text-gray-600">Energetic</span>
-                    <div className="w-24 bg-gray-200 rounded-full h-2">
-                      <div className="bg-red-500 h-2 rounded-full" style={{ width: '60%' }} />
-                    </div>
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm text-gray-600">Happy</span>
-                    <div className="w-24 bg-gray-200 rounded-full h-2">
-                      <div className="bg-yellow-500 h-2 rounded-full" style={{ width: '80%' }} />
-                    </div>
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm text-gray-600">Chill</span>
-                    <div className="w-24 bg-gray-200 rounded-full h-2">
-                      <div className="bg-blue-500 h-2 rounded-full" style={{ width: '40%' }} />
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {activeTab === 'music' && (
-        <div className="space-y-6">
-          <div className="bg-gradient-to-r from-purple-50 to-pink-50 rounded-lg p-6">
-            <h3 className="text-lg font-semibold text-gray-800 mb-4">Music Control</h3>
-            {currentTrack ? (
-              <div className="bg-white rounded-lg p-4">
-                <div className="flex items-center space-x-4">
-                  <div className="w-16 h-16 bg-gradient-to-br from-purple-400 to-pink-500 rounded-lg flex items-center justify-center">
-                    <Music className="w-8 h-8 text-white" />
-                  </div>
-                  <div className="flex-1">
-                    <h4 className="font-bold text-gray-900">{currentTrack.title}</h4>
-                    <p className="text-gray-600">{currentTrack.artist}</p>
-                    <div className="flex items-center space-x-4 mt-2 text-sm text-gray-500">
-                      <span>{currentTrack.genre}</span>
-                      <span>•</span>
-                      <span>{currentTrack.bpm} BPM</span>
-                      <span>•</span>
-                      <span>{Math.floor(currentTrack.duration / 60)}:{(currentTrack.duration % 60).toString().padStart(2, '0')}</span>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            ) : (
-              <div className="bg-white rounded-lg p-8 text-center">
-                <Music className="w-12 h-12 mx-auto mb-4 text-gray-300" />
-                <p className="text-gray-500">No track currently selected</p>
-              </div>
-            )}
-          </div>
-        </div>
-      )}
-
-      {activeTab === 'announcements' && (
-        <div className="space-y-6">
-          <div className="bg-gradient-to-r from-green-50 to-blue-50 rounded-lg p-6">
-            <h3 className="text-lg font-semibold text-gray-800 mb-4">Recent Announcements</h3>
-            {announcements.length > 0 ? (
-              <div className="space-y-3">
-                {announcements.slice(-5).reverse().map((announcement, index) => (
-                  <div key={index} className="bg-white rounded-lg p-4 border-l-4 border-blue-500">
-                    <div className="flex items-center space-x-2 mb-2">
-                      <Mic className="w-4 h-4 text-blue-600" />
-                      <span className="text-sm text-gray-500">
-                        {new Date().toLocaleTimeString()}
-                      </span>
-                    </div>
-                    <p className="text-gray-800">{announcement}</p>
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <div className="bg-white rounded-lg p-8 text-center">
-                <Mic className="w-12 h-12 mx-auto mb-4 text-gray-300" />
-                <p className="text-gray-500">No announcements yet</p>
-              </div>
-            )}
-          </div>
-        </div>
-      )}
+      </div>
     </div>
   );
 };
