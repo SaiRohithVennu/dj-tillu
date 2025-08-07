@@ -168,3 +168,5 @@ export const ContinuousAIAgentPanel: React.FC<ContinuousAIAgentPanelProps> = ({
     </div>
   );
 };
+
+export default ContinuousAIAgentPanel
