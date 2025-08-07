@@ -1,231 +1,169 @@
-import React from 'react';
-import { Eye, Brain, MessageSquare, Zap, Clock, Users, Camera, Play, Pause, RotateCcw } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { Eye, EyeOff, Settings, Activity, Zap } from 'lucide-react';
+import { useContinuousAIAgent } from '../hooks/useContinuousAIAgent';
 
 interface ContinuousAIAgentPanelProps {
   isActive: boolean;
-  onStartAgent: () => void;
-  onStopAgent: () => void;
-  isAnalyzing: boolean;
-  lastResponse: any;
-  responseHistory: any[];
-  agentStatus: any;
-  error: string | null;
-  onForceAnalysis: () => void;
-  conversationHistory: string[];
-  eventContext: any;
+  onToggle: (active: boolean) => void;
 }
 
 export const ContinuousAIAgentPanel: React.FC<ContinuousAIAgentPanelProps> = ({
   isActive,
-  onStartAgent,
-  onStopAgent,
-  isAnalyzing,
-  lastResponse,
-  responseHistory,
-  agentStatus,
-  error,
-  onForceAnalysis,
-  conversationHistory,
-  eventContext
+  onToggle
 }) => {
-  const getEmotionColor = (emotion: string) => {
-    switch (emotion) {
-      case 'excited': return 'text-yellow-400';
-      case 'welcoming': return 'text-green-400';
-      case 'encouraging': return 'text-blue-400';
-      case 'celebratory': return 'text-purple-400';
-      default: return 'text-gray-400';
-    }
-  };
+  const [showSettings, setShowSettings] = useState(false);
+  const [analysisInterval, setAnalysisInterval] = useState(5000);
+  const [confidenceThreshold, setConfidenceThreshold] = useState(0.7);
+  
+  const {
+    isAnalyzing,
+    currentMood,
+    lastAnalysis,
+    analysisHistory,
+    startAnalysis,
+    stopAnalysis,
+    error
+  } = useContinuousAIAgent({
+    interval: analysisInterval,
+    confidenceThreshold
+  });
 
-  const getPriorityColor = (priority: string) => {
-    switch (priority) {
-      case 'immediate': return 'text-red-400';
-      case 'high': return 'text-orange-400';
-      case 'medium': return 'text-yellow-400';
-      case 'low': return 'text-green-400';
-      default: return 'text-gray-400';
+  useEffect(() => {
+    if (isActive && !isAnalyzing) {
+      startAnalysis();
+    } else if (!isActive && isAnalyzing) {
+      stopAnalysis();
     }
+  }, [isActive, isAnalyzing, startAnalysis, stopAnalysis]);
+
+  const handleToggle = () => {
+    onToggle(!isActive);
   };
 
   return (
-    <div className="space-y-4">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div className="flex items-center space-x-2">
-          <Eye className="w-5 h-5 text-blue-400" />
-          <span className="text-white font-medium">AI Video Agent</span>
-          {isActive && (
-            <div className={`w-2 h-2 rounded-full animate-pulse ${
-              isAnalyzing ? 'bg-yellow-400' : 'bg-green-400'
-            }`}></div>
-          )}
+    <div className="bg-white/10 backdrop-blur-md rounded-xl p-4 border border-white/20">
+      <div className="flex items-center justify-between mb-4">
+        <div className="flex items-center gap-2">
+          <Eye className="w-5 h-5 text-green-400" />
+          <h3 className="text-white font-semibold">AI Video Agent</h3>
         </div>
-        <div className="flex items-center space-x-2">
+        <div className="flex items-center gap-2">
           <button
-            onClick={onForceAnalysis}
-            disabled={!isActive || isAnalyzing}
-            className="p-1 bg-purple-600 hover:bg-purple-700 disabled:bg-gray-600 rounded text-xs transition-colors"
-            title="Force analysis"
+            onClick={() => setShowSettings(!showSettings)}
+            className="p-1 rounded-lg bg-white/10 hover:bg-white/20 transition-colors"
           >
-            <RotateCcw className="w-3 h-3" />
+            <Settings className="w-4 h-4 text-white" />
           </button>
           <button
-            onClick={isActive ? onStopAgent : onStartAgent}
-            className={`px-3 py-1 rounded text-xs transition-colors ${
-              isActive 
-                ? 'bg-red-600 hover:bg-red-700 text-white' 
-                : 'bg-green-600 hover:bg-green-700 text-white'
+            onClick={handleToggle}
+            className={`px-3 py-1 rounded-lg text-sm font-medium transition-colors ${
+              isActive
+                ? 'bg-green-500 text-white hover:bg-green-600'
+                : 'bg-gray-500 text-white hover:bg-gray-600'
             }`}
           >
-            {isActive ? (
+            {isActive ? 'ACTIVE' : 'START'}
+          </button>
+        </div>
+      </div>
+
+      <div className="space-y-3">
+        <div className="flex items-center justify-between text-sm">
+          <span className="text-gray-300">Status:</span>
+          <div className="flex items-center gap-2">
+            {isAnalyzing ? (
               <>
-                <Pause className="w-3 h-3 inline mr-1" />
-                STOP
+                <Activity className="w-4 h-4 text-green-400 animate-pulse" />
+                <span className="text-green-400">Analyzing</span>
               </>
             ) : (
               <>
-                <Play className="w-3 h-3 inline mr-1" />
-                START
+                <div className="w-4 h-4 rounded-full bg-gray-500" />
+                <span className="text-gray-400">Inactive</span>
               </>
             )}
-          </button>
+          </div>
         </div>
+
+        {currentMood && (
+          <div className="flex items-center justify-between text-sm">
+            <span className="text-gray-300">Current Mood:</span>
+            <span className="text-white font-medium capitalize">{currentMood}</span>
+          </div>
+        )}
+
+        {lastAnalysis && (
+          <div className="text-xs text-gray-400">
+            Last analysis: {new Date(lastAnalysis).toLocaleTimeString()}
+          </div>
+        )}
+
+        {error && (
+          <div className="text-xs text-red-400 bg-red-500/10 p-2 rounded">
+            Error: {error}
+          </div>
+        )}
       </div>
 
-      {/* Error Display */}
-      {error && (
-        <div className="bg-red-500/20 border border-red-500/40 rounded-lg p-3">
-          <p className="text-red-300 text-sm">{error}</p>
-        </div>
-      )}
-
-      {/* Agent Status */}
-      <div className={`bg-white/10 rounded-lg p-3 border border-white/20 ${!isActive ? 'opacity-50' : ''}`}>
-        <div className="space-y-2 text-sm">
-          <div className="flex justify-between">
-            <span className="text-gray-300">Status:</span>
-            <span className={`font-semibold ${
-              isAnalyzing ? 'text-yellow-300' : 
-              isActive ? 'text-green-300' : 'text-red-300'
-            }`}>
-              {isAnalyzing ? 'Analyzing...' :
-               isActive ? 'Watching' : 'Inactive'}
-            </span>
+      {showSettings && (
+        <div className="mt-4 pt-4 border-t border-white/20 space-y-3">
+          <div>
+            <label className="block text-xs text-gray-300 mb-1">
+              Analysis Interval (ms)
+            </label>
+            <input
+              type="number"
+              value={analysisInterval}
+              onChange={(e) => setAnalysisInterval(Number(e.target.value))}
+              className="w-full px-2 py-1 text-xs bg-white/10 border border-white/20 rounded text-white"
+              min="1000"
+              max="30000"
+              step="1000"
+            />
           </div>
           
-          <div className="flex justify-between">
-            <span className="text-gray-300">Event:</span>
-            <span className="text-purple-300 font-semibold">
-              {eventContext?.eventName || 'None'}
-            </span>
-          </div>
-          
-          <div className="flex justify-between">
-            <span className="text-gray-300">Personality:</span>
-            <span className="text-blue-300 capitalize">
-              {eventContext?.aiPersonality || 'None'}
-            </span>
-          </div>
-
-          {agentStatus.conversationHistory !== undefined && (
-            <div className="flex justify-between">
-              <span className="text-gray-300">Interactions:</span>
-              <span className="text-green-300 font-semibold">
-                {agentStatus.conversationHistory}
-              </span>
-            </div>
-          )}
-        </div>
-      </div>
-
-      {/* Last Response */}
-      {lastResponse && (
-        <div className="bg-blue-600/10 rounded-lg p-3 border border-blue-500/20">
-          <h4 className="text-sm font-medium text-blue-300 mb-2 flex items-center">
-            <Brain className="w-4 h-4 mr-1" />
-            Last AI Response
-          </h4>
-          <div className="space-y-2 text-xs">
-            <div className="flex justify-between">
-              <span className="text-gray-300">Priority:</span>
-              <span className={`font-semibold ${getPriorityColor(lastResponse.priority)}`}>
-                {lastResponse.priority.toUpperCase()}
-              </span>
-            </div>
-            
-            <div className="flex justify-between">
-              <span className="text-gray-300">Emotion:</span>
-              <span className={`font-semibold ${getEmotionColor(lastResponse.emotion)}`}>
-                {lastResponse.emotion}
-              </span>
-            </div>
-            
-            {lastResponse.message && (
-              <div>
-                <span className="text-gray-300">Message:</span>
-                <p className="text-white text-sm mt-1 italic">"{lastResponse.message}"</p>
-              </div>
-            )}
-            
-            {lastResponse.suggestedMusicStyle && (
-              <div className="flex justify-between">
-                <span className="text-gray-300">Music:</span>
-                <span className="text-purple-300">{lastResponse.suggestedMusicStyle}</span>
-              </div>
-            )}
-            
-            <div>
-              <span className="text-gray-300">Reasoning:</span>
-              <p className="text-gray-400 text-xs mt-1">{lastResponse.reasoning}</p>
+          <div>
+            <label className="block text-xs text-gray-300 mb-1">
+              Confidence Threshold
+            </label>
+            <input
+              type="range"
+              value={confidenceThreshold}
+              onChange={(e) => setConfidenceThreshold(Number(e.target.value))}
+              className="w-full"
+              min="0.1"
+              max="1"
+              step="0.1"
+            />
+            <div className="text-xs text-gray-400 text-center">
+              {(confidenceThreshold * 100).toFixed(0)}%
             </div>
           </div>
         </div>
       )}
 
-      {/* Conversation History */}
-      {conversationHistory.length > 0 && (
-        <div>
-          <h4 className="text-sm font-medium text-gray-300 mb-2 flex items-center">
-            <MessageSquare className="w-4 h-4 mr-1" />
-            Recent Interactions
-          </h4>
-          <div className="space-y-1 max-h-32 overflow-y-auto">
-            {conversationHistory.slice(-5).reverse().map((interaction, index) => (
-              <div
-                key={index}
-                className="p-2 bg-white/5 rounded text-xs"
-              >
-                <p className="text-gray-300">"{interaction.split(': ')[1]}"</p>
-                <p className="text-gray-500 text-xs mt-1">{interaction.split(': ')[0]}</p>
+      {analysisHistory.length > 0 && (
+        <div className="mt-4 pt-4 border-t border-white/20">
+          <div className="text-xs text-gray-300 mb-2">Recent Analysis</div>
+          <div className="space-y-1 max-h-20 overflow-y-auto">
+            {analysisHistory.slice(-3).map((analysis, index) => (
+              <div key={index} className="text-xs text-gray-400 flex justify-between">
+                <span className="capitalize">{analysis.mood}</span>
+                <span>{new Date(analysis.timestamp).toLocaleTimeString()}</span>
               </div>
             ))}
           </div>
         </div>
       )}
 
-      {/* Analysis Indicator */}
-      {isAnalyzing && (
-        <div className="bg-yellow-600/20 rounded-lg p-3 border border-yellow-500/30">
-          <div className="flex items-center space-x-2">
-            <div className="w-4 h-4 border-2 border-yellow-400 border-t-transparent rounded-full animate-spin"></div>
-            <span className="text-yellow-300 text-sm">AI is watching and thinking...</span>
-          </div>
-          <p className="text-xs text-yellow-200 mt-1">
-            Analyzing video feed with Gemini Vision + OpenAI reasoning
-          </p>
+      <div className="mt-4 text-xs text-gray-400">
+        <div className="flex items-center gap-1">
+          <Zap className="w-3 h-3" />
+          <span>Continuous AI Video Agent</span>
         </div>
-      )}
-
-      {/* Info */}
-      <div className={`bg-blue-600/10 rounded-lg p-2 border border-blue-500/20 ${!isActive ? 'opacity-50' : ''}`}>
-        <p className="text-xs text-gray-300 text-center">
-          <strong>Continuous AI Video Agent</strong><br />
-          {isActive 
-            ? 'Watching video feed and making intelligent hosting decisions every 3-5 seconds'
-            : 'Click START to enable continuous AI video interaction'
-          }
-        </p>
+        <div className="mt-1">
+          Click START to enable continuous AI video interaction
+        </div>
       </div>
     </div>
   );

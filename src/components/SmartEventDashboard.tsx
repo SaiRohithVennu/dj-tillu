@@ -1,232 +1,219 @@
-import React from 'react';
-import { Calendar, Clock, Users, Zap, CheckCircle, AlertCircle } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { Calendar, Clock, Users, Zap, Settings, Play, Pause } from 'lucide-react';
+import { useSmartEventDJ } from '../hooks/useSmartEventDJ';
 
 interface SmartEventDashboardProps {
-  eventDetails: any;
   isActive: boolean;
-  eventStarted: boolean;
-  currentPhase: any;
-  recognizedVIPs: any[];
-  eventStatus: string;
-  upcomingMoments: any[];
-  triggeredMoments: string[];
-  onStartEvent: () => void;
-  onStopEvent: () => void;
+  onToggle: (active: boolean) => void;
 }
 
 export const SmartEventDashboard: React.FC<SmartEventDashboardProps> = ({
-  eventDetails,
   isActive,
-  eventStarted,
-  currentPhase,
-  recognizedVIPs,
-  eventStatus,
-  upcomingMoments,
-  triggeredMoments,
-  onStartEvent,
-  onStopEvent
+  onToggle
 }) => {
-  if (!eventDetails) {
-    return (
-      <div className="text-center py-8">
-        <Calendar className="w-12 h-12 text-gray-500 mx-auto mb-3" />
-        <p className="text-gray-300 mb-2">No event configured</p>
-        <p className="text-gray-400 text-sm">Set up your event in the Event Setup panel</p>
-      </div>
-    );
-  }
+  const [showSettings, setShowSettings] = useState(false);
+  const [eventDetails, setEventDetails] = useState({
+    name: 'kjhkjbkjb jk,',
+    type: 'BIRTHDAY',
+    startTime: '10:00 AM',
+    endTime: '10:05 AM',
+    guestCount: 50
+  });
 
-  const formatTime = (time: string) => {
-    return new Date(`2000-01-01T${time}`).toLocaleTimeString([], { 
-      hour: '2-digit', 
-      minute: '2-digit' 
-    });
+  const {
+    currentPhase,
+    timeline,
+    isRunning,
+    startEvent,
+    pauseEvent,
+    updateEventDetails,
+    getRecommendations
+  } = useSmartEventDJ();
+
+  useEffect(() => {
+    if (isActive && !isRunning) {
+      startEvent(eventDetails);
+    } else if (!isActive && isRunning) {
+      pauseEvent();
+    }
+  }, [isActive, isRunning, startEvent, pauseEvent, eventDetails]);
+
+  const handleToggle = () => {
+    onToggle(!isActive);
   };
 
-  const getPhaseColor = (phase: string) => {
-    const colors = {
-      arrival: 'blue',
-      cocktail: 'green',
-      dinner: 'yellow',
-      dancing: 'purple',
-      closing: 'red'
-    };
-    return colors[phase as keyof typeof colors] || 'gray';
+  const handleEventDetailsChange = (field: string, value: string | number) => {
+    const newDetails = { ...eventDetails, [field]: value };
+    setEventDetails(newDetails);
+    updateEventDetails(newDetails);
   };
 
   return (
-    <div className="space-y-4">
-      {/* Event Header */}
-      <div className="bg-gradient-to-r from-purple-600/20 to-pink-600/20 rounded-lg p-4 border border-purple-500/30">
+    <div className="bg-white/10 backdrop-blur-md rounded-xl p-4 border border-white/20">
+      <div className="flex items-center justify-between mb-4">
+        <div className="flex items-center gap-2">
+          <Calendar className="w-5 h-5 text-blue-400" />
+          <h3 className="text-white font-semibold">Event Dashboard</h3>
+        </div>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => setShowSettings(!showSettings)}
+            className="p-1 rounded-lg bg-white/10 hover:bg-white/20 transition-colors"
+          >
+            <Settings className="w-4 h-4 text-white" />
+          </button>
+          <button
+            onClick={handleToggle}
+            className={`px-3 py-1 rounded-lg text-sm font-medium transition-colors ${
+              isActive
+                ? 'bg-blue-500 text-white hover:bg-blue-600'
+                : 'bg-gray-500 text-white hover:bg-gray-600'
+            }`}
+          >
+            {isActive ? 'ACTIVE' : 'START'}
+          </button>
+        </div>
+      </div>
+
+      {/* Event Info Card */}
+      <div className="bg-gradient-to-r from-purple-500/20 to-pink-500/20 rounded-lg p-3 mb-4">
         <div className="flex items-center justify-between mb-2">
-          <h3 className="text-lg font-bold text-white">{eventDetails.name}</h3>
-          <span className="px-2 py-1 bg-purple-500/30 text-purple-200 rounded text-xs">
-            {eventDetails.type.toUpperCase()}
+          <h4 className="text-white font-medium">{eventDetails.name}</h4>
+          <span className="px-2 py-1 bg-purple-500 text-white text-xs rounded-full">
+            {eventDetails.type}
           </span>
         </div>
-        <div className="grid grid-cols-2 gap-4 text-sm">
-          <div className="flex items-center space-x-2">
-            <Clock className="w-4 h-4 text-gray-400" />
-            <span className="text-gray-300">
-              {formatTime(eventDetails.startTime)} - {formatTime(eventDetails.endTime)}
-            </span>
+        <div className="flex items-center gap-4 text-sm text-gray-300">
+          <div className="flex items-center gap-1">
+            <Clock className="w-4 h-4" />
+            <span>{eventDetails.startTime} - {eventDetails.endTime}</span>
           </div>
-          <div className="flex items-center space-x-2">
-            <Users className="w-4 h-4 text-gray-400" />
-            <span className="text-gray-300">{eventDetails.expectedAttendees} guests</span>
+          <div className="flex items-center gap-1">
+            <Users className="w-4 h-4" />
+            <span>{eventDetails.guestCount} guests</span>
           </div>
         </div>
       </div>
 
       {/* Event Status */}
-      <div className="bg-white/10 rounded-lg p-3 border border-white/20">
-        <div className="flex items-center justify-between mb-3">
+      <div className="space-y-3">
+        <div className="flex items-center justify-between text-sm">
           <span className="text-gray-300">Event Status:</span>
-          <span className={`font-semibold ${
-            eventStarted && isActive ? 'text-green-300' : 
-            eventStarted ? 'text-yellow-300' : 'text-gray-300'
+          <span className={`font-medium ${
+            isRunning ? 'text-green-400' : 'text-gray-400'
           }`}>
-            {eventStatus}
+            {isRunning ? 'Event ready to start' : 'Event ready to start'}
           </span>
         </div>
-        
-        <div className="flex space-x-2">
-          {!eventStarted ? (
-            <button
-              onClick={onStartEvent}
-              className="flex-1 px-3 py-2 bg-green-600 hover:bg-green-700 rounded-lg transition-colors flex items-center justify-center"
-            >
-              <Zap className="w-4 h-4 mr-2" />
-              Start Event
-            </button>
-          ) : (
-            <button
-              onClick={onStopEvent}
-              className="flex-1 px-3 py-2 bg-red-600 hover:bg-red-700 rounded-lg transition-colors"
-            >
-              Stop Event
-            </button>
-          )}
-        </div>
+
+        {currentPhase && (
+          <div className="flex items-center justify-between text-sm">
+            <span className="text-gray-300">Current Phase:</span>
+            <span className="text-white font-medium capitalize">{currentPhase}</span>
+          </div>
+        )}
+
+        {/* Timeline */}
+        {timeline.length > 0 && (
+          <div className="mt-4">
+            <div className="text-xs text-gray-300 mb-2">Event Timeline</div>
+            <div className="space-y-2 max-h-32 overflow-y-auto">
+              {timeline.map((event, index) => (
+                <div key={index} className="flex items-center gap-2 text-xs">
+                  <div className={`w-2 h-2 rounded-full ${
+                    event.completed ? 'bg-green-400' : 'bg-gray-400'
+                  }`} />
+                  <span className="text-gray-300">{event.time}</span>
+                  <span className="text-white">{event.activity}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
       </div>
 
-      {/* Current Phase */}
-      {currentPhase && (
-        <div className={`bg-${getPhaseColor(currentPhase.phase)}-600/20 rounded-lg p-3 border border-${getPhaseColor(currentPhase.phase)}-500/30`}>
-          <div className="flex items-center justify-between mb-2">
-            <span className="text-white font-medium">Current Phase</span>
-            <span className={`text-${getPhaseColor(currentPhase.phase)}-300 text-sm`}>
-              {formatTime(currentPhase.time)}
-            </span>
+      {/* VIP Recognition Status */}
+      <div className="mt-4 pt-4 border-t border-white/20">
+        <div className="text-sm text-gray-300 mb-2">VIP Recognition</div>
+        <div className="text-xs text-gray-400">No VIPs configured</div>
+      </div>
+
+      {/* Settings Panel */}
+      {showSettings && (
+        <div className="mt-4 pt-4 border-t border-white/20 space-y-3">
+          <div>
+            <label className="block text-xs text-gray-300 mb-1">Event Name</label>
+            <input
+              type="text"
+              value={eventDetails.name}
+              onChange={(e) => handleEventDetailsChange('name', e.target.value)}
+              className="w-full px-2 py-1 text-xs bg-white/10 border border-white/20 rounded text-white"
+            />
           </div>
-          <div className="space-y-1 text-sm">
-            <div className="flex justify-between">
-              <span className="text-gray-300">Phase:</span>
-              <span className={`text-${getPhaseColor(currentPhase.phase)}-200 capitalize`}>
-                {currentPhase.phase}
-              </span>
+          
+          <div>
+            <label className="block text-xs text-gray-300 mb-1">Event Type</label>
+            <select
+              value={eventDetails.type}
+              onChange={(e) => handleEventDetailsChange('type', e.target.value)}
+              className="w-full px-2 py-1 text-xs bg-white/10 border border-white/20 rounded text-white"
+            >
+              <option value="BIRTHDAY">Birthday</option>
+              <option value="WEDDING">Wedding</option>
+              <option value="CORPORATE">Corporate</option>
+              <option value="PARTY">Party</option>
+            </select>
+          </div>
+
+          <div className="grid grid-cols-2 gap-2">
+            <div>
+              <label className="block text-xs text-gray-300 mb-1">Start Time</label>
+              <input
+                type="time"
+                value={eventDetails.startTime}
+                onChange={(e) => handleEventDetailsChange('startTime', e.target.value)}
+                className="w-full px-2 py-1 text-xs bg-white/10 border border-white/20 rounded text-white"
+              />
             </div>
-            <div className="flex justify-between">
-              <span className="text-gray-300">Music Style:</span>
-              <span className={`text-${getPhaseColor(currentPhase.phase)}-200`}>
-                {currentPhase.musicStyle}
-              </span>
+            <div>
+              <label className="block text-xs text-gray-300 mb-1">End Time</label>
+              <input
+                type="time"
+                value={eventDetails.endTime}
+                onChange={(e) => handleEventDetailsChange('endTime', e.target.value)}
+                className="w-full px-2 py-1 text-xs bg-white/10 border border-white/20 rounded text-white"
+              />
             </div>
-            <div className="flex justify-between">
-              <span className="text-gray-300">Target Energy:</span>
-              <span className={`text-${getPhaseColor(currentPhase.phase)}-200`}>
-                {currentPhase.energyTarget}/10
-              </span>
-            </div>
+          </div>
+
+          <div>
+            <label className="block text-xs text-gray-300 mb-1">Guest Count</label>
+            <input
+              type="number"
+              value={eventDetails.guestCount}
+              onChange={(e) => handleEventDetailsChange('guestCount', Number(e.target.value))}
+              className="w-full px-2 py-1 text-xs bg-white/10 border border-white/20 rounded text-white"
+              min="1"
+              max="1000"
+            />
           </div>
         </div>
       )}
 
-      {/* VIP Recognition Status */}
-      <div>
-        <h4 className="text-sm font-medium text-gray-300 mb-2">VIP Recognition</h4>
-        <div className="space-y-2 max-h-32 overflow-y-auto">
-          {recognizedVIPs.map((vip) => (
-            <div
-              key={vip.id}
-              className={`p-2 rounded-lg border text-sm ${
-                vip.recognitionCount > 0
-                  ? 'bg-green-500/20 border-green-500/40'
-                  : 'bg-white/5 border-white/20'
-              }`}
-            >
-              <div className="flex items-center justify-between">
-                <div>
-                  <span className="text-white font-medium">{vip.name}</span>
-                  <span className="text-gray-400 ml-2">({vip.role})</span>
-                </div>
-                <div className="flex items-center space-x-1">
-                  {vip.recognitionCount > 0 ? (
-                    <>
-                      <CheckCircle className="w-4 h-4 text-green-400" />
-                      <span className="text-green-300 text-xs">
-                        {vip.recognitionCount}x
-                      </span>
-                    </>
-                  ) : (
-                    <span className="text-gray-500 text-xs">Not seen</span>
-                  )}
-                </div>
-              </div>
-            </div>
-          ))}
-          
-          {recognizedVIPs.length === 0 && (
-            <p className="text-xs text-gray-400 text-center py-2">No VIPs configured</p>
-          )}
-        </div>
-      </div>
-
-      {/* Upcoming Moments */}
-      <div>
-        <h4 className="text-sm font-medium text-gray-300 mb-2">Upcoming Moments</h4>
-        <div className="space-y-2">
-          {upcomingMoments.map((moment) => (
-            <div
-              key={moment.id}
-              className="p-2 bg-yellow-600/20 border border-yellow-500/30 rounded-lg text-sm"
-            >
-              <div className="flex items-center justify-between">
-                <span className="text-white">{moment.description}</span>
-                <span className="text-yellow-300">{formatTime(moment.time)}</span>
-              </div>
-              <div className="text-xs text-yellow-200 mt-1 capitalize">
-                {moment.type.replace('_', ' ')}
-              </div>
-            </div>
-          ))}
-          
-          {upcomingMoments.length === 0 && (
-            <p className="text-xs text-gray-400 text-center py-2">No upcoming moments</p>
-          )}
-        </div>
-      </div>
-
-      {/* Event Stats */}
-      <div className="bg-purple-600/10 rounded-lg p-3 border border-purple-500/20">
-        <div className="grid grid-cols-3 gap-4 text-center text-xs">
-          <div>
-            <p className="text-purple-300 font-semibold">{triggeredMoments.length}</p>
-            <p className="text-gray-400">Moments</p>
-          </div>
-          <div>
-            <p className="text-purple-300 font-semibold">
-              {recognizedVIPs.filter(v => v.recognitionCount > 0).length}
-            </p>
-            <p className="text-gray-400">VIPs Seen</p>
-          </div>
-          <div>
-            <p className="text-purple-300 font-semibold">
-              {eventDetails.eventFlow.length}
-            </p>
-            <p className="text-gray-400">Phases</p>
-          </div>
-        </div>
+      {/* Main Start Event Button */}
+      <div className="mt-4">
+        <button
+          onClick={handleToggle}
+          disabled={!eventDetails.name}
+          className={`w-full py-3 rounded-lg font-semibold text-white transition-all ${
+            isActive
+              ? 'bg-gradient-to-r from-green-500 to-emerald-500 hover:from-green-600 hover:to-emerald-600'
+              : 'bg-gradient-to-r from-blue-500 to-purple-500 hover:from-blue-600 hover:to-purple-600'
+          } disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2`}
+        >
+          <Zap className="w-5 h-5" />
+          {isActive ? 'Event Active' : 'Start Event'}
+        </button>
       </div>
     </div>
   );
