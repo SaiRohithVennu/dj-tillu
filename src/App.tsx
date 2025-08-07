@@ -14,7 +14,7 @@ import { AudiusBrowser } from './components/AudiusBrowser';
 import { SupabaseTrackManager } from './components/SupabaseTrackManager';
 import { WhooshMoodBrowser } from './components/WhooshMoodBrowser';
 import { MoodPlaylistManager } from './components/MoodPlaylistManager';
-import { { AudioVisualizer } from './components/AudioVisualizer';
+import { AudioVisualizer } from './components/AudioVisualizer';
 import { EventSetupWizard } from './components/EventSetupWizard';
 import { useAudioPlayer } from './hooks/useAudioPlayer';
 import { useTrackLibrary } from './hooks/useTrackLibrary';
