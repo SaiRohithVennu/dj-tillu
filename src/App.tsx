@@ -15,7 +15,7 @@ import { SupabaseTrackManager } from './components/SupabaseTrackManager';
 import { WhooshMoodBrowser } from './components/WhooshMoodBrowser';
 import { MoodPlaylistManager } from './components/MoodPlaylistManager';
 import { AudioVisualizer } from './components/AudioVisualizer';
-import { { AIDJPanel } from './components/AIDJPanel';
+import { AIDJPanel } from './components/AIDJPanel';
 import { useTrackLibrary } from './hooks/useTrackLibrary';
 import { useAudioPlayer } from './hooks/useAudioPlayer';
 import { useGeminiMoodAnalysis } from './hooks/useGeminiMoodAnalysis';
