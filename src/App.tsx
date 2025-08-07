@@ -15,7 +15,7 @@ import { WhooshMoodBrowser } from './components/WhooshMoodBrowser';
 import { AudioVisualizer } from './components/AudioVisualizer';
 import { EventDetailsManager } from './components/EventDetailsManager';
 import { MoodPlaylistManager } from './components/MoodPlaylistManager';
-import { { AIDJPanel } from './components/AIDJPanel';
+import { AIDJPanel } from './components/AIDJPanel';
 import { Settings, X, Zap } from 'lucide-react';
 
 import { useAudioPlayer } from './hooks/useAudioPlayer';
